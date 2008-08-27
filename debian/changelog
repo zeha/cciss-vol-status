@@ -1,0 +1,6 @@
+cciss-vol-status (1.03-1) unstable; urgency=low
+
+  * Initial release (Closes: #496788)
+
+ -- Christian Hofstaedtler <ch+debian-packages@zeha.at>  Wed, 27 Aug 2008 17:52:21 +0200
+

@@ -1,0 +1,17 @@
+Source: cciss-vol-status
+Section: admin
+Priority: extra
+Maintainer: Christian Hofstaedtler <ch+debian-packages@zeha.at>
+Build-Depends: debhelper (>= 5), autotools-dev
+Standards-Version: 3.8.0
+
+Package: cciss-vol-status
+Architecture: amd64 i386
+Depends: ${shlibs:Depends}
+Description: HP SmartArray RAID Volume Status Checker
+ A RAID monitor for HP SmartArray Controllers. Only the newer ones, which use
+ the kernel driver named "cciss" can be checked. It will check for problems
+ on your configured logical drives, without parsing the array controllers
+ event log.
+ .
+ It also supports MSA500 and MSA1000 controllers.

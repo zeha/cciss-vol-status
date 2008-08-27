@@ -74,28 +74,28 @@ drives, as, under some circumstances some logical drives might
 otherwise be missed.  This option no longer does anything, as the 
 algorithm for finding logical drives was changed to obviate the 
 need for it.
-.SH EXAMPLE
+.SH EXAMPLE OUTPUT
 .nf
-.LD
-	[root@somehost]# cciss_vol_status -q /dev/cciss/c*d0
-	/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 0 status: OK.
-	/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 1 status: OK.
-	/dev/cciss/c0d0: (Smart Array P600) RAID 1 Volume 2 status: OK.
-	/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 4 status: OK.
-	/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 5 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 0 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 1 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 2 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 3 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 4 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 5 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 6 status: OK.
-	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 7 status: OK.
+.PP
+[root@somehost]# cciss_vol_status -q /dev/cciss/c*d0
+/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 0 status: OK.
+/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 1 status: OK.
+/dev/cciss/c0d0: (Smart Array P600) RAID 1 Volume 2 status: OK.
+/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 4 status: OK.
+/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 5 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 0 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 1 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 2 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 3 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 4 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 5 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 6 status: OK.
+/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 7 status: OK.
 
-	[root@someotherhost]# cciss_vol_status -q /dev/sg0 /dev/cciss/c*d0
-	/dev/sg0: (MSA1000) RAID 1 Volume 0 status: OK.   At least one spare drive.
-	/dev/sg0: (MSA1000) RAID 5 Volume 1 status: OK.
-	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK.
+[root@someotherhost]# cciss_vol_status -q /dev/sg0 /dev/cciss/c*d0
+/dev/sg0: (MSA1000) RAID 1 Volume 0 status: OK.   At least one spare drive.
+/dev/sg0: (MSA1000) RAID 5 Volume 1 status: OK.
+/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK.
 
 .DE
 .fi
