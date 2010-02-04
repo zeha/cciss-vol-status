@@ -59,6 +59,7 @@ extern int errno; /* some systems #define this! */
 
 #include <inttypes.h>
 #include <getopt.h>
+#include <dirent.h>
 
 #ifdef HAVE_LINUX_CCISS_IOCTL_H
 /* Some versions of cciss_ioctl.h contain a "__user" attribute which 
@@ -116,8 +117,16 @@ struct smartarray_id_t {
 	{ 0x3215103C, "Smart Array E200i",	0, 1},
 	{ 0x3223103C, "Smart Array P800",	0, 1},
 	{ 0x3237103c, "Smart Array E500",	0, 1},
+	{ 0x323D103C, "Smart Array P700m",	0, 1},
+	{ 0x3241103C, "Smart Array P212",	0, 1},
+	{ 0x3243103C, "Smart Array P410",	0, 1},
+	{ 0x3245103C, "Smart Array P410i",	0, 1},
+	{ 0x3247103C, "Smart Array P411",	0, 1},
+	{ 0x3249103C, "Smart Array P812",	0, 1},
 	{ 0xe0110e11, "HP MSA500",		1, 0}, /* aka Smart Array CL */
 	{ 0xe0200e11, "HP MSA500 G2",		1, 0},
+	{ 0xe0300e11, "HP MSA20",		1, 0},
+	{ 0x3118103c, "HP B110i",		0, 1},
 #ifdef HAVE_SCSI_SG_H
 	{ MSA1000_ID, "MSA1000",	1,},
 #else
@@ -125,6 +134,9 @@ struct smartarray_id_t {
 #endif
 	{ 0xFFFFFFFF, "Unknown Smart Array",	0,},
 };
+
+#define ARRAYSIZE(a) (sizeof((a)) / sizeof((a)[0]))
+#define UNKNOWN_CONTROLLER ARRAYSIZE(smartarray_id)
 
 unsigned long long zero_lun = 0x00ULL;
 #define ZEROLUN ((unsigned char *) &zero_lun)
@@ -154,6 +166,14 @@ struct cciss_to_bmic_t {
 	int naddrs;
 	struct cciss_bmic_addr_t addr[1024];  /* 1024 should do us for awhile */
 } cciss_to_bmic;
+
+/* List of controllers -- not all controllers in the system, just the
+   internal one (e.g. all zero luns, plus externally attached ones --
+   like MSA500. */
+#define MAX_CONTROLLERS 256 /* this is a ridiculously large number */
+unsigned char controller_lun_list[MAX_CONTROLLERS][8];
+int busses_on_this_ctlr[MAX_CONTROLLERS];
+int num_controllers = 0;
 
 /* See the following documents for information about the hardware 
  * specific structures used in this program:
@@ -194,13 +214,15 @@ typedef struct
 
 const char *spare_drive_status_msg[] = {
 		/* Corresponds to bits in spare_status field, above */
-		/* bit 0 */  "At least one spare drive",
+		/* bit 0 */  "At least one spare drive designated",
 		/* bit 1 */  "At least one spare drive activated and currently rebuilding",
-		/* bit 2 */  "At least one spare drive has failed",
-		/* bit 3 */  "At least one spare drive activated",
-		/* bit 4 */  "At least one spare drive remains available",
+		/* bit 2 */  "At least one activated on-line spare drive is completely rebuilt on this logical drive",
+		/* bit 3 */  "At least one spare drive has failed",
+		/* bit 4 */  "At least one spare drive activated",
+		/* bit 5 */  "At least one spare drive remains available",
 };
-#define NSPARE_MSGS (sizeof(spare_drive_status_msg) / sizeof(spare_drive_status_msg[0]))
+
+#define NSPARE_MSGS ARRAYSIZE(spare_drive_status_msg)
 
 #pragma pack(1)
 /* Structure returned by Identify Controller command (0x11) */
@@ -323,6 +345,59 @@ typedef struct id_logical_drive_t {
 } id_logical_drive;
 #define ID_LOGICAL_DRIVE 0x10
 #pragma pack()
+
+
+#pragma pack(1)
+typedef struct alarm_struct_t {
+	uint8_t alarm_status;
+	uint8_t temp_status;
+	uint8_t valid_alarm_bits;
+	uint16_t alarm_count;
+	uint16_t specific_alarm_counts[8];
+} alarm_struct;
+
+typedef struct inquiry_data_t {
+	uint8_t peripheral_type;
+	uint8_t rmb;
+	uint8_t versions;
+	uint8_t misc;
+	uint8_t additional_length;
+	uint8_t reserved[2];
+	uint8_t support_bits;
+	uint8_t vendor_id[8];
+	uint8_t product_id[16];
+	uint8_t product_revision[4];
+} inquiry_data;
+
+typedef struct sense_bus_param_t {
+	inquiry_data inquiry;
+	uint8_t inquiry_valid;
+	uint32_t installed_drive_map;
+	uint16_t hot_plug_count[32];
+	uint8_t reserved1; /* physical box number? */
+	uint8_t reserved2;
+	alarm_struct alarm_data;
+	uint16_t connection_info; /* 0x01: External Connector is Used? */
+	uint8_t scsi_device_revision;
+	uint8_t fan_status;
+	uint8_t more_inquiry_data[64];
+	uint32_t scsi_device_type;
+	uint32_t bus_bit_map;
+	uint8_t reserved3[8];
+	uint8_t scsi_initiator_id;
+	uint8_t scsi_target_id;
+	uint8_t physical_port[2];
+	uint16_t big_installed_drive_map[8];
+	uint16_t big_bus_bit_map[8];
+	uint16_t big_box_bit_map[8];
+	uint8_t installed_box_map;
+	uint8_t more_connection_info;
+	uint8_t reserved4[2];
+	char chassis_sn[40];
+} sense_bus_param;
+#define SENSE_BUS_PARAM 0x65
+#pragma pack()
+
 
 char *progname = "cciss_vol_status";
 
@@ -599,12 +674,13 @@ char *decode_status[] = {
 	/* 12 */ "Queued for expansion",
 };
 
-#define MAX_DECODE_STATUS (sizeof(decode_status) / sizeof(decode_status[0]))
+#define MAX_DECODE_STATUS ARRAYSIZE(decode_status)
 
 void print_volume_status(char *file, int ctlrtype, int volume_number, 
 	ida_id_lstatus *vs, id_ctlr *id, int tolerance_type, int certain)
 {
 	int spare_bit;
+	int i, j, failed_drive_count;
 	unsigned char raid_level[100];
 
 	if (vs->status == 2) {/* This logical drive is not configured, so no status. */
@@ -663,6 +739,27 @@ void print_volume_status(char *file, int ctlrtype, int volume_number,
 	}
 
 	printf("\n");
+
+	/* Scan the failed drives map.  If any bits set, we're not happy.  Note, the
+	 * logical drive status may still be zero in this instance, as a spare drive 
+	 * may have taken over but we don't want to exit with status of zero in such
+	 * cases.
+	 */
+
+	failed_drive_count = 0;
+	for (i = 0; i < ARRAYSIZE(vs->big_failure_map); i++) {
+		if (vs->big_failure_map[i]) {
+			for (j = 0; j < sizeof(vs->big_failure_map[i]) * 8; j++)
+				if ((1 << j) & vs->big_failure_map[i])
+					failed_drive_count++;
+		}
+	}
+	if (failed_drive_count != 0) {
+		everything_hunky_dory = 0;
+		printf("    Total of %d failed physical drives "
+			"detected on this logical drive.\n",
+			failed_drive_count);
+	}
 }
 
 int lookup_controller(uint32_t board_id)
@@ -677,6 +774,87 @@ int lookup_controller(uint32_t board_id)
 	return -1;
 }
 
+void print_bus_status(char *file, int ctlrtype, int controller_number,
+	int bus_number, sense_bus_param *bus_param)
+{
+	int alarms;
+	char status[4*60];
+	char enclosure_name[17];
+	char enclosure_sn[41];
+	int i;
+
+	/* check if inquiry was valid (if not, bus does not exist) */
+	if (bus_param->inquiry_valid == 0) return;
+
+	/* prepare enclosure name */
+	strncpy(enclosure_name, bus_param->inquiry.product_id, 16);
+	enclosure_name[16] = '\0';
+	for (i=16-1; i>0; i--)
+		if (enclosure_name[i] == ' ') {
+			enclosure_name[i] = '\0';
+		} else {
+			break;
+		}
+	for (i=0; i<16; i++)
+		if (enclosure_name[i] != ' ')
+			break;
+	strncpy(enclosure_name, enclosure_name+i, 16-i);
+
+	/* prepare enclosure S/N -- sometimes this is screwed up. */
+	/* Eg. 6400 with internal card cage gives back bogus info */
+	/* for me for the serial number. */
+	strncpy(enclosure_sn, bus_param->chassis_sn, 40);
+	enclosure_sn[41] = '\0';
+	for (i=40-1; i>0; i--)
+		if (enclosure_sn[i] == ' ') {
+			enclosure_sn[i] = '\0';
+		} else {
+			break;
+		}
+	for (i=0; i<40; i++)
+		if (enclosure_sn[i] != ' ')
+			break;
+	strncpy(enclosure_sn, enclosure_sn+i, 40-i);
+
+	/* check only for valid alarm bits */	
+	alarms = bus_param->alarm_data.alarm_status & bus_param->alarm_data.valid_alarm_bits;
+
+	if (alarms) {
+		everything_hunky_dory = 0;
+		
+		status[0] = '\0';
+		if (alarms & 0x1) {
+			/* fan alert */
+			if (strlen(status) > 0) strcat(status, ", ");
+			strcat(status, "Fan failed");
+		}
+		if (alarms & 0x2) {
+			/* temperature alert */
+			if (strlen(status) > 0) strcat(status, ", ");
+			strcat(status, "Temperature problem");
+		}
+		if (alarms & 0x4) {
+			/* door alert */
+			if (strlen(status) > 0) strcat(status, ", ");
+			strcat(status, "Door alert");
+		}
+		if (alarms & 0x8) {
+			/* power supply alert */
+			if (strlen(status) > 0) strcat(status, ", ");
+			strcat(status, "Power Supply Unit failed");
+		}
+		if (strlen(status) == 0) {
+			sprintf(status, "Unknown problem (alarm value: 0x%X, allowed: 0x%X)", bus_param->alarm_data.alarm_status, bus_param->alarm_data.valid_alarm_bits);
+		}
+	} else {
+		strcpy(status, "OK");
+	}
+
+	printf("%s: (%s) Enclosure %s (S/N: %s) on Bus %d, Physical Port %c%c status: %s.\n", file, 
+		smartarray_id[ctlrtype].board_name, enclosure_name, enclosure_sn,
+		bus_number, bus_param->physical_port[0], bus_param->physical_port[1],
+		status);
+}
 
 #ifdef HAVE_SCSI_SG_H
 
@@ -816,6 +994,49 @@ int msa1000_passthru_ioctl (int fd, int cmd, void *buffer, int size, uint log_un
 	return do_sg_io(fd, cdb, cdblen, buffer, size, direction);
 }
 
+int inquiry_vendor_model_matches(int fd, char *prod[])
+{
+	int status;
+	char std_inq[256];
+	int i;
+
+	status = do_inquiry(fd, 0, (unsigned char *) std_inq, 255);
+	if (status < 0) 
+		return 0;
+	for (i = 0; prod[i] != NULL; i++) {
+		if (strncmp(std_inq+8, prod[i], strnlen(prod[i])) == 0)
+			return 1;
+	}
+	return 0;
+}
+
+static char *hpahcisr_prod[] = {
+        	"HP      B110i",
+		NULL,
+};
+
+static char *hpsa_prod[] = {
+		"HP      P800",
+        	"HP      P400",
+        	"HP      P700M",
+        	"HP      P212",
+        	"HP      P410",
+        	"HP      P410i",
+        	"HP      P411",
+        	"HP      P812",
+		NULL,
+};
+
+int is_hpsa(int fd)
+{
+	return inquiry_vendor_model_matches(fd, hpsa_prod);
+}
+
+int is_hpahcisr(int fd)
+{
+	return inquiry_vendor_model_matches(fd, hpahcisr_prod);
+}
+
 int is_msa1000(int fd)
 {
 	int status;
@@ -833,6 +1054,147 @@ int is_msa1000(int fd)
 	return 0;
 }
 
+#define MAX_CACHED_DEVICE_NODES 2048
+static struct serial_number_map {
+	char *device_node;
+	char serial_no[16];
+} serial_no_map[MAX_CACHED_DEVICE_NODES] = { 0 };
+static int ncached_device_nodes = 0;
+
+char *lookup_cached_device_node(char *serial_no)
+{
+	int i;
+	for (i = 0; i < ncached_device_nodes; i++) {
+		if (memcmp(serial_no, serial_no_map[i].serial_no, 16) == 0)
+			return serial_no_map[i].device_node;
+	}
+	return NULL;
+}
+
+char *lookup_cached_serialno(char *filename)
+{
+	int i;
+	for (i = 0; i < ncached_device_nodes; i++) {
+		if (strcmp(filename, serial_no_map[i].device_node) == 0)
+			return serial_no_map[i].serial_no;
+	}
+	return NULL;
+}
+
+void cache_device_node(char *device_node, char *serial_no)
+{
+	int i;
+	for (i = 0; i < ncached_device_nodes; i++) {
+		if (memcmp(serial_no, serial_no_map[i].serial_no, 16) == 0 &&
+			strcmp(device_node, serial_no_map[i].device_node) == 0)
+			/* already cached */
+			return;
+	}
+	if (i >= MAX_CACHED_DEVICE_NODES)
+		return; /* cache is full. */
+	ncached_device_nodes = i;
+	memcpy(serial_no_map[i].serial_no, serial_no, 16);
+	serial_no_map[i].device_node = malloc(strlen(device_node)+1);
+	strcpy(serial_no_map[i].device_node, device_node);
+}
+
+void free_device_node_cache()
+{
+	int i;
+	for (i = 0; i < ncached_device_nodes; i++)
+		if (serial_no_map[i].device_node)
+			free(serial_no_map[i].device_node);
+}
+
+int scsi_device_scandir_filter(const struct dirent *d)
+{
+	int len;
+
+	len = strlen(d->d_name);
+
+		
+
+	/* Skip non /dev/sd* devices */	
+	if (strncmp(d->d_name, "sd", 2) != 0)
+		return 0;
+
+	/* Skip partitions.  Only hit the whole disk device. */
+	if (d->d_name[len-1] <= '9' && d->d_name[len-1] >= '0')
+		return 0;
+
+	return 1;
+}
+
+/* Given a IDENTIFY LOGICAL DRIVE data, find the matching /dev/sd* */
+/* note.  "Matching" means, the one with the same serial number. */
+static char *unknown_scsi_device = "/dev/???";
+void find_scsi_device_node(id_logical_drive *drive_id, char **scsi_device_node)
+{
+	struct dirent **namelist = NULL;
+	int nents, rc, i, fd;
+	unsigned char buffer[64];
+	char filename[1024];
+	char *device_node;
+
+
+	/* see if we already know the device node for this serialno.  Unlikely */
+	device_node = lookup_cached_device_node(drive_id->unique_volume_id);
+	if (device_node != NULL) {
+		*scsi_device_node = malloc(strlen(device_node) + 1);
+		strcpy(*scsi_device_node, device_node);
+		return;
+	}
+
+	/* Scan for /dev/sd[a-z]+ device nodes */
+	*scsi_device_node = unknown_scsi_device;
+	nents = scandir("/dev", &namelist, scsi_device_scandir_filter, alphasort);
+	if (nents < 0)
+		return;
+
+	for (i=0;i<nents;i++) { /* for each device node /dev/sd[a-z]+ */
+		char *sn;
+		snprintf(filename, 1023, "/dev/%s", namelist[i]->d_name);	
+
+		/* see if we already know the serial no. */
+		sn = lookup_cached_serialno(filename);
+		if (sn != NULL) {
+			/* see if the serial number matches. */
+			if (memcmp(sn, drive_id->unique_volume_id, 16) == 0) {
+				*scsi_device_node = malloc(strlen(filename)+1);
+				strcpy(*scsi_device_node, filename);
+				break; /* serial number matches, we're done. */
+			} else
+				continue; /* serial number doesn't match. */
+		}
+
+		/* we don't know the serial number for this dev node, find it. */
+		fd = open(filename, O_RDWR);
+		if (fd < 0)
+			continue;
+
+		rc = do_inquiry(fd, 0x83, buffer, sizeof(buffer));
+		if (rc < 0)
+			continue;
+
+		/* remember the serial number for this device node for next time. */
+		cache_device_node(filename, &buffer[8]);
+
+		/* Does it match? */
+		if (memcmp(&buffer[8], drive_id->unique_volume_id, 16) == 0) {
+			*scsi_device_node = malloc(strlen(filename)+1);
+			strcpy(*scsi_device_node, filename);
+			break;	/* matching serial number, we're done. */
+		}
+	}	
+
+	/* free what scandir() allocated. */
+	for (i=0;i<nents;i++)
+		free(namelist[i]);
+	free(namelist); 
+
+	return;
+}
+
 void msa1000_logical_drive_status(char *file, int fd, 
 	unsigned int logical_drive, id_ctlr *id)
 {
@@ -840,6 +1202,7 @@ void msa1000_logical_drive_status(char *file, int fd,
 	ida_id_lstatus ldstatus;
 	id_logical_drive drive_id;
 	int tolerance_type = -1;
+	char *scsi_device_node;
 
 	rc = msa1000_passthru_ioctl(fd, ID_LOGICAL_DRIVE, &drive_id,
 		sizeof(drive_id), logical_drive);
@@ -859,7 +1222,10 @@ void msa1000_logical_drive_status(char *file, int fd,
 			progname, file, id->board_id);
 		return;
 	}
-	print_volume_status(file, ctlrtype, logical_drive, &ldstatus, id, tolerance_type, 1);
+	find_scsi_device_node(&drive_id, &scsi_device_node);
+	print_volume_status(scsi_device_node, ctlrtype, logical_drive, &ldstatus, id, tolerance_type, 1);
+	if (scsi_device_node != unknown_scsi_device)
+		free(scsi_device_node);
 }
 
 #endif /* ifdef HAVE_SCSI_SG_H */
@@ -961,6 +1327,9 @@ static int do_cciss_inquiry(char *file, int fd,
 	inquiry pages accessible via the 8-byte LUN which report the same things
 	as are accessible via the old "BMIC way", esp, e.g. SENSE_LOGICAL_DRIVE_STATUS.
 	I wonder the same thing myself.
+
+	This function has the side effect of filling out controller_lun_list[]
+	and num_controllers.
 	
 ***************************************8***************************/ 
 
@@ -983,6 +1352,7 @@ static int init_cciss_to_bmic(char *file, int fd)
 	int nguessed = 0;
 	int rc;
 	int i, j, k, m;
+	int ctlrtype;
 	
 	memset(&cciss_to_bmic, 0, sizeof(cciss_to_bmic));
 
@@ -1033,6 +1403,8 @@ static int init_cciss_to_bmic(char *file, int fd)
 	/* Careful, first 8 bytes of physlunlist are a count, not lun */
 	memcpy(&physlunlist[luncount+1], ZEROLUN, 8);
 	luncount++;
+	memset(controller_lun_list[0], 0, 8);
+	num_controllers = 1;
 
 	for (i=0;i<luncount;i++) { /* For each physical LUN... */
 
@@ -1086,6 +1458,21 @@ static int init_cciss_to_bmic(char *file, int fd)
 				fprintf(stderr, "\nSkipping standby/secondary controller.\n");
 			continue;
 		}
+
+		/* Record this controller for later checking of fan/power/temp status */
+		memcpy(controller_lun_list[num_controllers], (unsigned char *) &physlunlist[i+1], 8);
+		busses_on_this_ctlr[num_controllers] = id_ctlr_data.scsi_chip_count;
+
+		/* For SAS controllers, there's a different way to figure "busses" 
+		 * (how many storage boxes can be attached) than using the scsi_chip_count,
+		 * but it's not publically documented.  So, I'm just going to use 16 for SAS 
+		 * and "unknown" controllers.
+		 */
+		ctlrtype = lookup_controller(id_ctlr_data.board_id);
+		if (ctlrtype == -1 || smartarray_id[ctlrtype].supports_sas)
+			busses_on_this_ctlr[num_controllers] = 16;
+
+		num_controllers++;
 
 		max_possible_drives = id_ctlr_data.usMaxLogicalUnits;
 		if (debug) {
@@ -1191,7 +1578,8 @@ static int init_cciss_to_bmic(char *file, int fd)
 		/* Ugh.  This is really ugly.  MSA500 does not have the */
 		/* Unique ID in the identify_logical_drive_data.  In that case...sigh... */
 		/* just scan through our list of unmatched ones and assign them sequentially */
-		/* MOST times this will be correct. */ 
+		/* MOST times this will be correct.  Apparently some other old controllers */ 
+		/* have the same problem as well, e.g.: Smart Array 5300 */
 
 		for (m=0;m<nmissed;m++) {
 			for (k=0;k<cciss_to_bmic.naddrs;k++) {
@@ -1250,10 +1638,87 @@ static int init_cciss_to_bmic(char *file, int fd)
 	return 0;
 }
 
+void setup_sense_bus_params_cmd(IOCTL_Command_struct *c,
+	unsigned char lunaddr[], unsigned char bus,
+	sense_bus_param *bus_param)
+{
+	memset(c, 0, sizeof(c));
+	memcpy(&c->LUN_info, lunaddr, 8);
+	c->Request.CDBLen = 10;
+	c->Request.Type.Type = TYPE_CMD;
+	c->Request.Type.Attribute = ATTR_SIMPLE;
+	c->Request.Type.Direction = XFER_READ;
+	c->Request.Timeout = 0;
+	c->Request.CDB[0] = 0x26; /* 0x26 means "CCISS READ" */
+	c->Request.CDB[1] = 0; /* logical drive id? */
+	c->Request.CDB[5] = bus; /* bus id */
+	c->Request.CDB[6] = SENSE_BUS_PARAM;
+	c->buf_size = sizeof(*bus_param);
+	c->Request.CDB[7] = (c->buf_size >> 8) & 0xff;
+	c->Request.CDB[8] = c->buf_size  & 0xff;
+	c->buf = (unsigned char *) bus_param;
+}
+
+int do_sense_bus_parameters(char *file, int fd, unsigned char lunaddr[],
+	int ctlr, unsigned char bus, sense_bus_param *bus_param)
+{
+	IOCTL_Command_struct c;
+	int status;
+
+	setup_sense_bus_params_cmd(&c, lunaddr, bus, bus_param);
+	if (debug)
+		fprintf(stderr, "Getting bus status for bus %d\n", bus);
+	/* Get bus status */
+	status = ioctl(fd, CCISS_PASSTHRU, &c);
+
+	if (status != 0) {
+		fprintf(stderr, "%s: %s: ioctl: controller: %d bus: %d %s\n",
+			progname, file, ctlr, bus, strerror(errno));
+		/* This really should not ever happen. */
+		everything_hunky_dory = 0;
+		return -1;
+	}
+
+	/* This happens when we query busses that don't exist. */
+	if (c.error_info.CommandStatus == 4) /* 4 means "invalid command" */
+		return -1;
+
+	if (c.error_info.CommandStatus != 0) {
+		fprintf(stderr, "Error getting status for %s "
+			"controller: %d bus: %d: Commandstatus is %d\n",
+			file, ctlr, bus, c.error_info.CommandStatus);
+		everything_hunky_dory = 0;
+		return -1;
+	}
+	if (debug)
+		fprintf(stderr, "Status for controller %d bus %d "
+			"seems to be gettable.\n", ctlr, bus);
+	return 0;
+}
+
+int check_fan_power_temp(char *file, int ctlrtype, int fd, int num_controllers)
+{
+	int i, j;
+	IOCTL_Command_struct c;
+	int status;
+
+	/* Check the fan/power/temp status of each controller */
+	for (i = 0; i < num_controllers; i++) {
+		for (j = 0; j < busses_on_this_ctlr[i]; j++) {
+			sense_bus_param bus_param;
+			memset(&bus_param, 0, sizeof(bus_param));
+			if (do_sense_bus_parameters(file, fd, controller_lun_list[i], 
+				i, j, &bus_param) != 0)
+				continue;
+			print_bus_status(file, ctlrtype, i, j, &bus_param);
+		}
+	}
+}
+
 int cciss_status(char *file)
 {
 
-	int fd, status, i, rc;
+	int fd, status, i, j, rc;
 	IOCTL_Command_struct c;
 	ida_id_lstatus ldstatus;
 	id_ctlr id;
@@ -1262,6 +1727,8 @@ int cciss_status(char *file)
 	int numluns;
 	int bus;
 	int foundluns, maxluns, luncount;
+	int hpsa_driver = 0;
+	int hpahcisr_driver = 0;
 
 	fd = open(file, O_RDWR);
 	if (fd < 0) {
@@ -1278,7 +1745,11 @@ int cciss_status(char *file)
         rc = ioctl(fd, SCSI_IOCTL_GET_BUS_NUMBER, &bus);
         if (rc == 0) {
 		/* It's a SCSI device... maybe it's an MSA1000. */
-		if (is_msa1000(fd)) {
+		hpsa_driver = is_hpsa(fd);
+		if (!hpsa_driver)
+			hpahcisr_driver = is_hpahcisr(fd);
+		if (is_msa1000(fd) || hpsa_driver || hpahcisr_driver || try_unknown_devices)
+		{
 			rc = msa1000_passthru_ioctl(fd, ID_CTLR, &id, sizeof(id), 0);
 			if (rc < 0) {
 				fprintf(stderr, "%s: %s: Can't identify controller, id = 0x%08x.\n",
@@ -1290,6 +1761,23 @@ int cciss_status(char *file)
 			numluns = id.num_logical_drives;
 			for (i=0;i<numluns;i++) /* We know msa1000 supports only 32 logical drives */
 				msa1000_logical_drive_status(file, fd, i, &id);
+
+			/* We're not doing fan/temp/power for msa1000 for now. */
+			if (!hpsa_driver && !hpahcisr_driver)
+				return 0;
+
+			/* Construct mapping of CISS LUN addresses to "the BMIC way" */
+			rc = init_cciss_to_bmic(file, fd);
+			if (rc != 0) {
+				fprintf(stderr, "%s: Internal error, could not construct CISS to BMIC mapping.\n",
+						progname);
+				everything_hunky_dory = 0;
+				return -1;
+			}
+			ctlrtype = lookup_controller(id.board_id);
+			if (ctlrtype < 0)
+				ctlrtype = UNKNOWN_CONTROLLER;
+			check_fan_power_temp(file, ctlrtype, fd, num_controllers);
 			close(fd);
 			return 0;
 		}
@@ -1397,6 +1885,9 @@ int cciss_status(char *file)
 			cciss_to_bmic.addr[i].tolerance_type,
 			cciss_to_bmic.addr[i].certain);
 	}
+
+	/* Check the fan/power/temp status of each controller */
+	check_fan_power_temp(file, ctlrtype, fd, num_controllers);
 	close(fd);
 	return 0;
 }

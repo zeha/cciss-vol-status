@@ -21,7 +21,7 @@
 .\"	along with cciss_vol_status; if not, write to the Free Software
 .\"	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 .\"	
-.TH CCISS_VOL_STATUS "8" "March 2007" "cciss_vol_status (ccissutils) " ""
+.TH CCISS_VOL_STATUS "8" "Nov 2009" "cciss_vol_status (ccissutils) " ""
 .SH NAME
 cciss_vol_status \- show status of logical drives attached to HP Smartarray controllers
 .SH SYNOPSIS
@@ -74,28 +74,81 @@ drives, as, under some circumstances some logical drives might
 otherwise be missed.  This option no longer does anything, as the 
 algorithm for finding logical drives was changed to obviate the 
 need for it.
-.SH EXAMPLE OUTPUT
-.nf
+.SH DEVICE
 .PP
-[root@somehost]# cciss_vol_status -q /dev/cciss/c*d0
-/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 0 status: OK.
-/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 1 status: OK.
-/dev/cciss/c0d0: (Smart Array P600) RAID 1 Volume 2 status: OK.
-/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 4 status: OK.
-/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 5 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 0 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 1 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 2 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 3 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 4 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 5 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 6 status: OK.
-/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 7 status: OK.
+The DEVICE argument indicates which RAID controller is to be queried.
+Note, that it indicates which RAID controller, not which logical drive.
+.PP
+For the cciss driver, the "d0" nodes matching "/dev/cciss/c*d0" are the
+nodes which correspond to the RAID controllers.  (See note 1, below.)
+It is not necessary to invoke cciss_vol_status on each logical drive
+individually, though if you do this, each time it will report the
+status of ALL logical drives on the controller.
+.PP
+For the hpsa driver, or for fibre attached MSA1000 family devices, or
+for the hpahcisr sotware RAID driver which emulates Smart Arrays, 
+the RAID controller
+is accessed via the scsi generic driver, and the device nodes will
+match "/dev/sg*"   Some variants of the "lsscsi" tool will easily
+identify which device node corresponds to the RAID controller.  Some
+variants may only report the SCSI nexus (controller/bus/target/lun
+tuple.)  Some distros may not have the lsscsi tool.  
+.PP
+.br
+Executing the following query to the /sys filesystem and correlating
+this with the contents of /proc/scsi/scsi or output of lsscsi
+can help in finding the right
+/dev/sg node to use with cciss_vol_status:
+.PP
+.nf
+.LD
+wumpus:/home/scameron # ls -l /sys/class/scsi_generic/*
+lrwxrwxrwx 1 root root 0 2009-11-18 12:31 /sys/class/scsi_generic/sg0 -> ../../devices/pci0000:00/0000:00:02.0/0000:02:00.0/0000:03:03.0/host0/target0:0:0/0:0:0:0/scsi_generic/sg0
+lrwxrwxrwx 1 root root 0 2009-11-18 12:31 /sys/class/scsi_generic/sg1 -> ../../devices/pci0000:00/0000:00:1f.1/host2/target2:0:0/2:0:0:0/scsi_generic/sg1
+lrwxrwxrwx 1 root root 0 2009-11-19 07:47 /sys/class/scsi_generic/sg2 -> ../../devices/pci0000:00/0000:00:05.0/0000:0e:00.0/host4/target4:3:0/4:3:0:0/scsi_generic/sg2
+wumpus:/home/scameron # cat /proc/scsi/scsi
+Attached devices:
+Host: scsi0 Channel: 00 Id: 00 Lun: 00
+  Vendor: COMPAQ   Model: BD03685A24       Rev: HPB6
+  Type:   Direct-Access                    ANSI  SCSI revision: 03
+Host: scsi2 Channel: 00 Id: 00 Lun: 00
+  Vendor: SAMSUNG  Model: CD-ROM SC-148A   Rev: B408
+  Type:   CD-ROM                           ANSI  SCSI revision: 05
+Host: scsi4 Channel: 03 Id: 00 Lun: 00
+  Vendor: HP       Model: P800             Rev: 6.82
+  Type:   RAID                             ANSI  SCSI revision: 00
+wumpus:/home/scameron # lsscsi
+[0:0:0:0]    disk    COMPAQ   BD03685A24       HPB6  /dev/sda
+[2:0:0:0]    cd/dvd  SAMSUNG  CD-ROM SC-148A   B408  /dev/sr0
+[4:3:0:0]    storage HP       P800             6.82  -  
+.DE
+.fi
+.PP
+From the above you can see that /dev/sg2 corresponds to SCSI nexus 4:3:0:0,
+which corresponds to the HP P800 RAID controller listed in /proc/scsi/scsi.
+.SH EXAMPLE
+.nf
+.LD
+	[root@somehost]# cciss_vol_status -q /dev/cciss/c*d0
+	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK.
+	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 1 status: OK.
+	/dev/cciss/c0d0: (Smart Array P800) RAID 1 Volume 2 status: OK.
+	/dev/cciss/c0d0: (Smart Array P800) RAID 5 Volume 4 status: OK.
+	/dev/cciss/c0d0: (Smart Array P800) RAID 5 Volume 5 status: OK.
+	/dev/cciss/c0d0: (Smart Array P800) Enclosure MSA60 (S/N: USP6340B3F) on Bus 2, Physical Port 1E status: Power Supply Unit failed
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 0 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 1 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 2 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 3 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 4 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 5 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 6 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 7 status: OK.
 
-[root@someotherhost]# cciss_vol_status -q /dev/sg0 /dev/cciss/c*d0
-/dev/sg0: (MSA1000) RAID 1 Volume 0 status: OK.   At least one spare drive.
-/dev/sg0: (MSA1000) RAID 5 Volume 1 status: OK.
-/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK.
+	[root@someotherhost]# cciss_vol_status -q /dev/sg0 /dev/cciss/c*d0
+	/dev/sg0: (MSA1000) RAID 1 Volume 0 status: OK.   At least one spare drive.
+	/dev/sg0: (MSA1000) RAID 5 Volume 1 status: OK.
+	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK.
 
 .DE
 .fi
@@ -148,10 +201,49 @@ being configured.
 .TP
 "Queued for expansion." (12) - The logical drive will be expended
 when the controller is able to begin working on it.
+.PP
+Additionally, the following messages may appear regarding spare
+drive status: 
+.PP
+.nf
+.LD
+	"At least one spare drive designated"
+	"At least one spare drive activated and currently rebuilding"
+	"At least one activated on-line spare drive is completely rebuilt on this logical drive"
+	"At least one spare drive has failed"
+	"At least one spare drive activated"
+	"At least one spare drive remains available"
+.DE
+.fi
+.PP
+For each logical drive, the total number of failed 
+physical drives, if more than zero, will be reported as:
+.TP
+.nf
+.LD
+	"Total of n failed physical drives detected on this logical drive."
+.DE
+.fi
+.PP
+with "n" replaced by the actual number, of course.
+.PP
+Additionally failure conditions of disk enclosure fans,
+power supplies, and temperature are reported as follows:
+.PP
+.nf
+.LD
+	"Fan failed"
+	"Temperature problem"
+	"Door alert"
+	"Power Supply Unit failed"
+.DE
+.fi
 .SH FILES
-/dev/cciss/c*d0 (Smart Array PCI controllers)
+/dev/cciss/c*d0 (Smart Array PCI controllers using the cciss driver)
 .br
-/dev/sg* (Fibre attached MSA1000 controllers)
+/dev/sg* (Fibre attached MSA1000 controllers and
+Smart Array controllers using the hpsa driver or
+hpahcisr software RAID driver.)
 .SH EXIT CODES
 .TP
 0 - All configured logical drives queried have status of "OK." 
@@ -160,6 +252,11 @@ when the controller is able to begin working on it.
 .SH AUTHOR
 Written by Stephen M. Cameron 
 .SH "REPORTING BUGS"
+.P
+MSA500 G1 logical drive numbers may not be reported correctly.
+.P
+I've seen enclosure serial numbers contain garbage.
+.P
 Report bugs to <steve.cameron@hp.com>
 .SH COPYRIGHT
 Copyright \(co 2007 Hewlett-Packard Development Company, L.P.
@@ -168,3 +265,16 @@ This is free software; see the source for copying conditions.  There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 .SH "SEE ALSO"
 http://cciss.sourceforge.net
+.SH note 1
+The /dev/cciss/c*d0 device nodes of the cciss driver do double duty.
+They serve as an access point to both the RAID controllers, and to the
+first logical drive of each RAID controller.  Notice that a /dev/cciss/c*d0
+node will be present for each controller even if no logical drives are 
+configured on that controller.  It might be cleaner if the driver had
+a special device node just for the controller, instead of making these
+device nodes do double duty.  It has been like that since the 2.2
+linux kernel timeframe.  At that time, device major and minor nodes
+were statically allocated at compile time, and were in short supply.
+Changing this behavior at this point would break lots of userland 
+programs.
+.FE

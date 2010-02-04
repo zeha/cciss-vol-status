@@ -3,11 +3,12 @@ Section: admin
 Priority: extra
 Maintainer: Christian Hofstaedtler <ch+debian-packages@zeha.at>
 Build-Depends: debhelper (>= 5), autotools-dev
-Standards-Version: 3.8.0
+Standards-Version: 3.8.3
+Homepage: http://cciss.sourceforge.net/
 
 Package: cciss-vol-status
 Architecture: amd64 i386
-Depends: ${shlibs:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: HP SmartArray RAID Volume Status Checker
  A RAID monitor for HP SmartArray Controllers. Only the newer ones, which use
  the kernel driver named "cciss" can be checked. It will check for problems
