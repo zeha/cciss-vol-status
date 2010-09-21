@@ -6,6 +6,7 @@ cciss-vol-status (1.06-2) UNRELEASED; urgency=low
   * set vcs info fields
   * update package description
   * remove empty /usr/sbin directory
+  * remove useless README
 
  -- Christian Hofstaedtler <ch+debian-packages@zeha.at>  Tue, 21 Sep 2010 23:45:15 +0200
 
