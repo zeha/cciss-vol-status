@@ -5,6 +5,8 @@ Maintainer: Christian Hofstaedtler <ch+debian-packages@zeha.at>
 Build-Depends: debhelper (>= 5), autotools-dev
 Standards-Version: 3.8.3
 Homepage: http://cciss.sourceforge.net/
+Vcs-Browser: http://github.com/zeha/cciss-vol-status/
+Vcs-Git: git://github.com/zeha/cciss-vol-status.git
 
 Package: cciss-vol-status
 Architecture: amd64 i386
