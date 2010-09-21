@@ -1,5 +1,34 @@
+Tue Sep  2 12:14:04 CDT 2008
+	Added fan, temperature and power supply status
+	reporting (thanks to Christian Hofstaedtler)
 Tue Sep 19 14:55:25 CDT 2006
 	Autoconfiscated cciss_vol_status
 Tue Mar  6 14:44:14 EST 2007
 	Added support for more than 16 logical drives.
 	Added -x option for exhaustive search
+Mon Nov  2 04:56:55 CST 2009
+	Added support for hpsa driver
+	Added support for hpahcisr driver
+
+	Added support for new controllers:
+		Smart Array P700m
+		Smart Array P212
+		Smart Array P410
+		Smart Array P410i
+		Smart Array P411
+		Smart Array P812
+
+	Cache some serial numbers to cut down on redundant i/o
+	  when rummaging around trying to figure out what's what.
+
+	Assume 16 possible storage boxes for SAS based controllers
+
+Wed Nov 18 10:18:22 MST 2009
+	* Fixed bug that if a logical drive had an active spare, and thus was
+	  "ok", the exit code was still zero, so it acted as though nothing
+	  were wrong, even though the failed drive needed replacing to get back
+	  to original good status with spares.
+	* Fixed bug in spare status messages.  One message was left out, and so
+	  some of the others were wrong, being off-by-one.
+	* Bumped version up to 1.06
+
