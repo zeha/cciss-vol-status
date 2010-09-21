@@ -15,22 +15,35 @@
 DEB_HOST_GNU_TYPE   ?= $(shell dpkg-architecture -qDEB_HOST_GNU_TYPE)
 DEB_BUILD_GNU_TYPE  ?= $(shell dpkg-architecture -qDEB_BUILD_GNU_TYPE)
 
+confflags=
+# FOR AUTOCONF 2.52 AND NEWER ONLY
+ifeq ($(DEB_BUILD_GNU_TYPE), $(DEB_HOST_GNU_TYPE))
+	confflags += --build $(DEB_HOST_GNU_TYPE)
+else
+	confflags += --build $(DEB_BUILD_GNU_TYPE) --host $(DEB_HOST_GNU_TYPE)
+endif
 
-config.status: configure
+configure-stamp:
 	dh_testdir
-	# Add here commands to configure the package.
+
 ifneq "$(wildcard /usr/share/misc/config.sub)" ""
 	cp -f /usr/share/misc/config.sub config.sub
 endif
 ifneq "$(wildcard /usr/share/misc/config.guess)" ""
 	cp -f /usr/share/misc/config.guess config.guess
 endif
-	./configure --host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) --prefix=/usr --mandir=\$${prefix}/share/man --infodir=\$${prefix}/share/info CFLAGS="$(CFLAGS)" LDFLAGS="-Wl,-z,defs"
 
+	AUTOMAKE=automake-1.11 autoreconf -i
+
+	./configure $(confflags) \
+		--prefix=/usr --mandir=\$${prefix}/share/man \
+		--infodir=\$${prefix}/share/info \
+		CFLAGS="$(CFLAGS)" LDFLAGS="-Wl,-z,defs"
+
+	touch $@
 
 build: build-stamp
-
-build-stamp:  config.status
+build-stamp:  configure-stamp
 	dh_testdir
 
 	$(MAKE)
@@ -40,17 +53,22 @@ build-stamp:  config.status
 clean:
 	dh_testdir
 	dh_testroot
-	rm -f build-stamp 
+	rm -f build-stamp configure-stamp
 
 	[ ! -f Makefile ] || $(MAKE) distclean
-	rm -f config.sub config.guess config.log
+	rm -f config.sub config.guess configure config.log
+	rm -fr autom4te.cache
+
+	rm -f Makefile.in aclocal.m4
+	rm -f Makefile
+	rm -f depcomp install-sh missing config.h.in
 
 	dh_clean 
 
 install: build
 	dh_testdir
 	dh_testroot
-	dh_clean -k 
+	dh_clean -k
 	dh_installdirs
 
 	$(MAKE) DESTDIR=$(CURDIR)/debian/cciss-vol-status install

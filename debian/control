@@ -2,7 +2,8 @@ Source: cciss-vol-status
 Section: admin
 Priority: extra
 Maintainer: Christian Hofstaedtler <ch+debian-packages@zeha.at>
-Build-Depends: debhelper (>= 5), autotools-dev
+Build-Depends: debhelper (>= 5), autotools-dev, autoconf, automake1.11
+Build-Conflicts: autoconf2.13, automake1.4
 Standards-Version: 3.8.3
 Homepage: http://cciss.sourceforge.net/
 Vcs-Browser: http://github.com/zeha/cciss-vol-status/
