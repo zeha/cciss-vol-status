@@ -1,0 +1,25 @@
+
+Just type
+
+	./configure
+	make
+
+and, as root:
+
+	make install
+
+The "make install" will put cciss_vol_status into /usr/bin,
+and cciss_vol_status.8.gz into /usr/share/man/man8
+
+To uninstall, as root:
+
+	make uninstall
+
+This will remove /usr/share/man/man8/cciss_vol_status.8.gz
+and /usr/bin/cciss_voL_status
+
+Note, if configure complains about cciss_ioctl.h not compiling,
+it is because in the kernel header, there is an attribute "__user"
+which configure fails to #define out of existence.  (cciss_vol_status.c
+does do this.)  You can safely ignore this warning from configure.
+

@@ -1,0 +1,170 @@
+.\" Copyright (C) 2006,2007 Hewlett-Packard Development Company, L.P.
+.\"
+.\"
+.\"	Copyright 2006,2007 Hewlett-Packard Development Company, L.P.
+.\"
+.\"	Author: Stephen M. Cameron
+.\"
+.\"	This file is part of cciss_vol_status.
+.\"
+.\"	cciss_vol_status is free software; you can redistribute it and/or modify
+.\"	it under the terms of the GNU General Public License as published by
+.\"	the Free Software Foundation; either version 2 of the License, or
+.\"	(at your option) any later version.
+.\"
+.\"	cciss_vol_status is distributed in the hope that it will be useful,
+.\"	but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\"	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\"	GNU General Public License for more details.
+.\"
+.\"	You should have received a copy of the GNU General Public License
+.\"	along with cciss_vol_status; if not, write to the Free Software
+.\"	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+.\"	
+.TH CCISS_VOL_STATUS "8" "March 2007" "cciss_vol_status (ccissutils) " ""
+.SH NAME
+cciss_vol_status \- show status of logical drives attached to HP Smartarray controllers
+.SH SYNOPSIS
+.B cciss_vol_status
+[\fIOPTION\fR] [\fIDEVICE\fR]...
+.SH DESCRIPTION
+.\" Add any additional description here
+.PP
+Shows the status of logical drives configured on HP Smartarray
+controllers.  
+.SH OPTIONS
+.TP
+\fB\-p, --persnickety\fR
+Without this option, device nodes which can't be opened, or which
+are not found to be of the correct device type are silently ignored.
+This lets you use wildcards, e.g.: cciss_vol_status /dev/sg* /dev/cciss/c*d0,
+and the program will not complain as long as all devices which are found
+to be of the correct type are found to be ok.  However, you may wish
+to explicitly list the devices you expect to be there, and be notified 
+if they are not there (e.g. perhaps a PCI slot has died, and the system has 
+rebooted, so that what was once /dev/cciss/c1d0 is no longer there at 
+all).  This option will cause the program to complain about any device
+node listed which does not appear to be the right device type, or
+is not openable.
+.TP
+\fB\-C, --copyright\fR
+If stderr is a terminal, Print out a copyright message,
+and exit.
+.TP
+\fB\-q, --quiet\fR
+This option doesn't do anything.
+Previously, without this option and if stderr is a
+terminal, a copyright message precedes the normal program output.
+Now, the copyright message is only printed via the -C option.
+.TP
+\fB\-u, --try-unknown-devices\fR
+If a device has an unrecognized board ID, normally the program will
+not attempt to communicate with it.  In case you have some Smart Array
+controller which is newer than this program, the program may not 
+recognize it.  This option permits the program to attempt to interrogate
+the board even if it is unrecognized on the assumption that it is
+in fact a Smart Array of some kind.
+.TP
+\fB\-v, --version\fR
+Print the version number and exit.
+.TP
+\fB\-x, --exhaustive\fR
+Deprecated.  Previously, it "exhaustively" searched for logical
+drives, as, under some circumstances some logical drives might
+otherwise be missed.  This option no longer does anything, as the 
+algorithm for finding logical drives was changed to obviate the 
+need for it.
+.SH EXAMPLE
+.nf
+.LD
+	[root@somehost]# cciss_vol_status -q /dev/cciss/c*d0
+	/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 0 status: OK.
+	/dev/cciss/c0d0: (Smart Array P600) RAID 0 Volume 1 status: OK.
+	/dev/cciss/c0d0: (Smart Array P600) RAID 1 Volume 2 status: OK.
+	/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 4 status: OK.
+	/dev/cciss/c0d0: (Smart Array P600) RAID 5 Volume 5 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 0 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 1 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 2 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 3 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 4 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 5 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 6 status: OK.
+	/dev/cciss/c1d0: (Smart Array P800) RAID 5 Volume 7 status: OK.
+
+	[root@someotherhost]# cciss_vol_status -q /dev/sg0 /dev/cciss/c*d0
+	/dev/sg0: (MSA1000) RAID 1 Volume 0 status: OK.   At least one spare drive.
+	/dev/sg0: (MSA1000) RAID 5 Volume 1 status: OK.
+	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK.
+
+.DE
+.fi
+.SH DIAGNOSTICS
+.PP
+Normally, a logical drive in good working order should
+report a status of "OK."  Possible status values are:
+.TP
+"OK." (0) - The logical drive is in good working order.
+.TP
+"FAILED." (1) - The logical drive has failed, and no i/o to it is poosible.
+.TP
+"Using interim recovery mode." (3) - One or more drives has failed,
+but not so many that the logical drive can no longer operate.  The
+failed drives should be replaced as soon as possible.
+.TP
+"Ready for recovery operation." (4) -  Failed drive(s) have been 
+replaced, and the controller is about to begin rebuilding 
+redundant parity data.
+.TP
+"Currently recovering." (5) - Failed drive(s) have been replaced,
+and the controller is currently rebuilding redundant parity
+information.
+.TP
+"Wrong physical drive was replaced." (6) - A drive has failed, and
+another (working) drive was replaced.
+.TP
+"A physical drive is not properly connected." (7) - There is some 
+cabling or backplane problem in the drive enclosure.
+.TP
+(From fwspecwww.doc, see cpqarray project on sourceforge.net):
+Note: If the unit_status value is 6 (Wrong physical drive was replaced)
+or 7 (A physical drive is not properly connected), the unit_status
+of all other configured logical drives will be marked as
+1 (Logical drive failed). This is to force the user to
+correct the problem and to insure that once the problem
+is corrected, the data will not have been corrupted by
+any user action.
+.TP
+"Hardware is overheating." (8) - Hardware is too hot.
+.TP
+"Hardware was overheated." (9) - At some point in the past,
+the hardware got too hot.
+.TP
+"Currently expannding." (10) - The controller is currently in the 
+process of expanding a logical drive.
+.TP
+"Not yet available." (11) - The logical drive is not yet finished
+being configured.
+.TP
+"Queued for expansion." (12) - The logical drive will be expended
+when the controller is able to begin working on it.
+.SH FILES
+/dev/cciss/c*d0 (Smart Array PCI controllers)
+.br
+/dev/sg* (Fibre attached MSA1000 controllers)
+.SH EXIT CODES
+.TP
+0 - All configured logical drives queried have status of "OK." 
+.TP
+1 - One or more configured logical drives queried have status other than "OK."
+.SH AUTHOR
+Written by Stephen M. Cameron 
+.SH "REPORTING BUGS"
+Report bugs to <steve.cameron@hp.com>
+.SH COPYRIGHT
+Copyright \(co 2007 Hewlett-Packard Development Company, L.P.
+.br
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+.SH "SEE ALSO"
+http://cciss.sourceforge.net

@@ -1,0 +1,5 @@
+Tue Sep 19 14:55:25 CDT 2006
+	Autoconfiscated cciss_vol_status
+Tue Mar  6 14:44:14 EST 2007
+	Added support for more than 16 logical drives.
+	Added -x option for exhaustive search
