@@ -1,3 +1,9 @@
+cciss-vol-status (1.06-2) unstable; urgency=low
+
+  * Bump Standards-Version to 3.9.1
+
+ -- Christian Hofstaedtler <ch+debian-packages@zeha.at>  Tue, 21 Sep 2010 23:14:53 +0200
+
 cciss-vol-status (1.06-1) unstable; urgency=low
 
   * New upstream release (Closes: #568415)
