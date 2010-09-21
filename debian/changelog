@@ -2,7 +2,7 @@ cciss-vol-status (1.06-2) UNRELEASED; urgency=low
 
   * bump Standards-Version to 3.9.1
   * rebuild autotools build system on build so we don't need automake1.10
-  * add cron.daily example
+  * add cron.daily example (Closes: #597573)
   * set vcs info fields
   * update package description
 
