@@ -1,8 +1,12 @@
-cciss-vol-status (1.06-2) unstable; urgency=low
+cciss-vol-status (1.06-2) UNRELEASED; urgency=low
 
-  * Bump Standards-Version to 3.9.1
+  * bump Standards-Version to 3.9.1
+  * rebuild autotools build system on build so we don't need automake1.10
+  * add cron.daily example
+  * set vcs info fields
+  * update package description
 
- -- Christian Hofstaedtler <ch+debian-packages@zeha.at>  Tue, 21 Sep 2010 23:14:53 +0200
+ -- Christian Hofstaedtler <ch+debian-packages@zeha.at>  Tue, 21 Sep 2010 23:18:30 +0200
 
 cciss-vol-status (1.06-1) unstable; urgency=low
 
