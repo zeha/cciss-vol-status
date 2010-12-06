@@ -32,3 +32,60 @@ Wed Nov 18 10:18:22 MST 2009
 	  some of the others were wrong, being off-by-one.
 	* Bumped version up to 1.06
 
+2010/05/20 07:12:06
+	* Change weird "uint" to normal "unsigned int" Thanks to Frank Bergmann for this patch.
+	* Fix strnlen that should have been a strlen.  Thanks to Frank Bergmann for noticing this.
+
+2010/10/11 09:41:23
+	* get rid of typedefs
+
+2010/10/13 07:02:37
+	* cosmetic whitespace fixes
+
+Date: 2010/10/13 07:40:06
+	* Do not treat hpsa and hpahcisr as if they were MSA1000, but instead treat
+	  as cciss devices.  This means, use the CCISS_PASSTHRU ioctl, not SG_IO
+	  (the drivers for the MSA1000 are qlogic or emulex, and do not have the
+	  CCISS_PASSTHRU ioctl, and so must use SG_IO.  The difference in power between
+	  the SG_IO and CCISS_PASSTHRU is mainly that the CCISS_PASSTHRU allows specifying
+	  the 8-byte LUNID, and thus can aim commands at any attached device, whereas
+	  SG_IO is aimed by means of which device node you open.  However, there
+	  are devices (e.g. external controllers, MSA20, etc.) which do not have any
+	  exposed device nodes and so are unreachable by SG_IO.  By treating hpsa and
+	  hpahcisr as cciss, we get access to those devices.
+
+	* Factor out msa1000_status()
+
+	* Cleaned up -Wall warnings.
+
+	* Factor out device type sanity checking code into cciss_device_type_is_correct(),
+	  and get rid of the ugly goto for hpsa and hpahcisr cases.
+
+	* Factor out cciss_logical_drive_status()
+
+	* Rename the final parameter of cciss_logical_drive_status from 'i' to more
+	  sensible 'volume_number'
+
+	* Make all functions static
+
+2010/10/14 09:36:32
+	* Zero out controller_lun_list at the beginning init_cciss_to_bmic and num_controllers.
+	  init_cciss_to_bmic is called once per controller on the command line to find external
+	  controllers, and should be zeroed out each time.
+
+2010/11/05 08:44:13
+	* Provided local cciss_ioctl.h and cciss_defs.h to aid distros which
+	  come with a broken variant of cciss_ioctl.h, and added instructions in
+	  INSTALL which explain how to use these fixed headers.
+	* Added note about aclocal-1.10, and corrected note about how to deal with
+	  broken cciss_ioctl.h header files.
+	* Clarified that configure failing to #define __user is not the only reason
+          that cciss_ioctl.h might not compile.
+	* Added linux_alternate_makefile.mk to allow sidestepping autoconf problems.
+
+2010/11/19 14:54:44
+	* Now reports physical drive serial numbers, firmware revision, connector, box and bay information.
+	* Factor out find_bus_target() function
+	* Factor out format_phys_drive_location()
+	* Report S.M.A.R.T. predictive failures
+
