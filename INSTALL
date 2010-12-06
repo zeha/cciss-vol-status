@@ -18,8 +18,58 @@ To uninstall, as root:
 This will remove /usr/share/man/man8/cciss_vol_status.8.gz
 and /usr/bin/cciss_voL_status
 
-Note, if configure complains about cciss_ioctl.h not compiling,
-it is because in the kernel header, there is an attribute "__user"
+===================================================
+Notes that may help with getting things to compile:
+===================================================
+
+Note: If configure complains about cciss_ioctl.h not compiling,
+it might be because in the kernel header, there is an attribute "__user"
 which configure fails to #define out of existence.  (cciss_vol_status.c
-does do this.)  You can safely ignore this warning from configure.
+does do this.)  You can safely ignore this warning from configure, as
+the cciss_vol_status code does #define __user precisely because of
+this.  However, it may be the case, esp. if your distro is quite old
+that cciss_ioctl.h does not compile for another reason (see below).
+
+---
+
+Note:  If "make" gives you a message such as:
+WARNING: `aclocal-1.10' is needed, and you do not seem to have it handy on your
+         system.  You might have modified some files without having the
+         proper tools for further handling them.  Check the `README' file,
+         it often tells you about the needed prerequirements for installing
+         this package.  You may also peek at any GNU archive site, in case
+         some other package would contain this missing `aclocal-1.10' program.
+
+You can often get around this by doing the following:
+
+scameron@zuul:~/test/cciss_vol_status$ aclocal
+scameron@zuul:~/test/cciss_vol_status$ autoconf
+scameron@zuul:~/test/cciss_vol_status$ automake
+scameron@zuul:~/test/cciss_vol_status$ ./configure
+...
+scameron@zuul:~/test/cciss_vol_status$ make 
+
+Or, you can try to sidestep autoconf and its ornery friends, and
+use linux_alternate_makefile.mk:
+
+	make -f linux_alternate_makefile.mk
+
+and as root:
+
+	make -f linux_alternate_makefile.mk install
+
+Or, you can dig around looking for aclocal-1.10
+
+---
+
+Note:  Some old distros (e.g. debian Sarge) contain a broken
+version of include/linux/cciss_ioctl.h which doesn't compile at all. 
+Your best bet here is to get a newer version of cciss_ioctl.h which
+doesn't have that problem.  There are recent (circa 2010) cciss header
+files contained here, cciss_ioctl.h and cciss_defs.h.  You can try
+using these instead of your distro's header files by doing the
+following:
+
+./configure CFLAGS=-DUSE_LOCAL_CCISS_HEADERS
+make
 

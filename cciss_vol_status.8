@@ -57,6 +57,10 @@ Previously, without this option and if stderr is a
 terminal, a copyright message precedes the normal program output.
 Now, the copyright message is only printed via the -C option.
 .TP
+\fB\-s\fR
+Query each physical drive for S.M.A.R.T data and report any drives
+in "predictive failure" state.
+.TP
 \fB\-u, --try-unknown-devices\fR
 If a device has an unrecognized board ID, normally the program will
 not attempt to communicate with it.  In case you have some Smart Array
@@ -150,6 +154,17 @@ which corresponds to the HP P800 RAID controller listed in /proc/scsi/scsi.
 	/dev/sg0: (MSA1000) RAID 5 Volume 1 status: OK.
 	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK.
 
+	[root@localhost]# ./cciss_vol_status -s /dev/sg1
+	/dev/sda: (Smart Array P410i) RAID 0 Volume 0 status: OK. 
+		 connector 1I box 1 bay 1                 HP      DG072A9BB7                               B365P6803PCP0633     HPD0 S.M.A.R.T. predictive failure.
+	[root@localhost]# echo $?
+	1
+
+	[root@localhost]# ./cciss_vol_status -s /dev/cciss/c0d0
+	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK. 
+		 connector 2E box 1 bay 8                 HP      DF300BB6C3                           3LM08AP700009713RXUT     HPD3 S.M.A.R.T. predictive failure.
+	/dev/cciss/c0d0: (Smart Array P800) Enclosure MSA60 (S/N: USP6340B3F) on Bus 2, Physical Port 2E status: OK.
+
 .DE
 .fi
 .SH DIAGNOSTICS
@@ -160,6 +175,8 @@ report a status of "OK."  Possible status values are:
 "OK." (0) - The logical drive is in good working order.
 .TP
 "FAILED." (1) - The logical drive has failed, and no i/o to it is poosible.
+Additionally, failed drives will be identified by connector, box and bay,
+as well as vendor, model, serial number, and firmware revision.
 .TP
 "Using interim recovery mode." (3) - One or more drives has failed,
 but not so many that the logical drive can no longer operate.  The
@@ -214,6 +231,8 @@ drive status:
 	"At least one spare drive activated"
 	"At least one spare drive remains available"
 .DE
+Active spares will be identified by connector, box and bay, as well
+as by vendor, model, serial number, and firmware revision.
 .fi
 .PP
 For each logical drive, the total number of failed 
@@ -226,6 +245,16 @@ physical drives, if more than zero, will be reported as:
 .fi
 .PP
 with "n" replaced by the actual number, of course.
+.PP
+"Replacement" drives -- newly inserted drives that replace
+a previously failed drive but are not yet finished rebuilding --
+are also identified by connector, box and bay, as well as
+by vendor, model, serial number, and firmware revision.
+.PP
+If the -s option is specified, each physical drive will be
+queried for S.M.A.R.T data, any any drives in predictive failure
+state will be reported, identified by connector, box and bay,
+as well as vendor, model, serial number, and firmware revision.
 .PP
 Additionally failure conditions of disk enclosure fans,
 power supplies, and temperature are reported as follows:
