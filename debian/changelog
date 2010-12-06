@@ -1,14 +1,19 @@
-cciss-vol-status (1.06-2) UNRELEASED; urgency=low
+cciss-vol-status (1.08-1) UNRELEASED; urgency=low
 
-  * bump Standards-Version to 3.9.1
-  * rebuild autotools build system on build so we don't need automake1.10
-  * add cron.daily example (Closes: #597573)
-  * set vcs info fields
-  * update package description
-  * remove empty /usr/sbin directory
-  * remove useless README
+  * New Upstream release 1.08
+    * Drop patch fix-strnlen-missing-arg, fixed upstream
+  * Bump Standards-Version to 3.9.1
+  * Rebuild autotools build system on build, so we don't Depend: on obsolete
+    automake1.10
+  * Add cron.daily example (Closes: #597573)
+  * Set VCS Fields in debian/control
+  * Update Package description
+  * Remove empty /usr/sbin directory
+  * fix example installation
+  * Do not install useless README
+  * Update Maintainer email address
 
- -- Christian Hofstaedtler <ch+debian-packages@zeha.at>  Tue, 21 Sep 2010 23:45:15 +0200
+ -- Christian Hofstaedtler <christian@hofstaedtler.name>  Mon, 06 Dec 2010 21:14:41 +0100
 
 cciss-vol-status (1.06-1) unstable; urgency=low
 
