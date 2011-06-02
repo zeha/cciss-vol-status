@@ -8,6 +8,7 @@ Standards-Version: 3.9.2
 Homepage: http://cciss.sourceforge.net/
 Vcs-Browser: http://github.com/zeha/cciss-vol-status/
 Vcs-Git: git://github.com/zeha/cciss-vol-status.git
+DM-Upload-Allowed: yes
 
 Package: cciss-vol-status
 Architecture: amd64 i386
