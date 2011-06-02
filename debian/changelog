@@ -1,7 +1,6 @@
-cciss-vol-status (1.09-1) UNRELEASED; urgency=low
+cciss-vol-status (1.09-1) unstable; urgency=low
 
   * New Upstream release 1.09
-  * New Upstream release 1.08
     * Drop patch fix-strnlen-missing-arg, fixed upstream
   * Bump Standards-Version to 3.9.2
   * Rebuild autotools build system on build, so we don't Depend: on obsolete
@@ -14,7 +13,7 @@ cciss-vol-status (1.09-1) UNRELEASED; urgency=low
   * Do not install useless README
   * Update Maintainer email address
 
- -- Christian Hofstaedtler <christian@hofstaedtler.name>  Mon, 06 Dec 2010 21:14:41 +0100
+ -- Christian Hofstaedtler <christian@hofstaedtler.name>  Thu, 02 Jun 2011 18:09:06 +0200
 
 cciss-vol-status (1.06-1) unstable; urgency=low
 
