@@ -1321,7 +1321,7 @@ static int scsi_device_scandir_filter(const struct dirent *d)
 /* Given a IDENTIFY LOGICAL DRIVE data, find the matching /dev/sd* */
 /* note.  "Matching" means, the one with the same serial number. */
 static char *unknown_scsi_device = "/dev/???";
-static void find_scsi_device_node(char *unique_volume_id, char **scsi_device_node)
+static void find_scsi_device_node(unsigned char *unique_volume_id, char **scsi_device_node)
 {
 	struct dirent **namelist = NULL;
 	int nents, rc, i, fd;
@@ -1400,11 +1400,13 @@ static void msa1000_logical_drive_status(char *file, int fd,
 	int tolerance_type = -1;
 	char *scsi_device_node;
 
+	memset(&drive_id, 0, sizeof(drive_id));
 	rc = msa1000_passthru_ioctl(fd, ID_LOGICAL_DRIVE, &drive_id,
 		sizeof(drive_id), logical_drive);
 	if (rc == 0)
 		tolerance_type = drive_id.tolerance_type;
 
+	memset(&ldstatus, 0, sizeof(ldstatus));
 	rc = msa1000_passthru_ioctl(fd, ID_LSTATUS, &ldstatus,
 		sizeof(ldstatus), logical_drive);
 	if (rc < 0) {
@@ -1453,6 +1455,7 @@ static int do_cciss_inquiry(char *file, int fd,
 	int status;
 
 	memset(&cmd, 0, sizeof(cmd));
+	memset(cdb, 0, sizeof(cdb));
 	cdb[0] = 0x12; /* inquiry */
 	cdb[1] = inquiry_page ? 1 : 0;
 	cdb[2] = inquiry_page;
@@ -1555,8 +1558,9 @@ static int init_cciss_to_bmic(char *file, int fd)
 	int ctlrtype;
 
 	memset(&cciss_to_bmic, 0, sizeof(cciss_to_bmic));
-	memset(&controller_lun_list, 0, sizeof(controller_lun_list));
-	num_controllers = 0;
+	memset(lunlist, 0, sizeof(lunlist));
+	memset(physlunlist, 0, sizeof(physlunlist));
+	memset(missed_drive, 0, sizeof(missed_drive));
 
 	/* Do report LOGICAL LUNs to get a list of all logical drives */
 	rc = do_report_luns(file, fd, &luncount, (unsigned char *) lunlist, 0);
@@ -1844,7 +1848,7 @@ static void setup_sense_bus_params_cmd(IOCTL_Command_struct *c,
 	unsigned char lunaddr[], unsigned char bus,
 	sense_bus_param *bus_param)
 {
-	memset(c, 0, sizeof(c));
+	memset(c, 0, sizeof(*c));
 	memcpy(&c->LUN_info, lunaddr, 8);
 	c->Request.CDBLen = 10;
 	c->Request.Type.Type = TYPE_CMD;
@@ -1859,6 +1863,26 @@ static void setup_sense_bus_params_cmd(IOCTL_Command_struct *c,
 	c->Request.CDB[7] = (c->buf_size >> 8) & 0xff;
 	c->Request.CDB[8] = c->buf_size  & 0xff;
 	c->buf = (unsigned char *) bus_param;
+}
+
+static void print_error_info(IOCTL_Command_struct *c)
+{
+	int i;
+	printf("Error info:\n");
+	printf("CDB = ");
+	for (i = 0; i < 16; i++)
+		printf("%02x ", c->Request.CDB[i]);
+	printf("\n");
+	printf("CommandStatus = %d\n", c->error_info.CommandStatus);
+	printf("ScsiStatus = %d\n", c->error_info.ScsiStatus);
+	printf("SenseLen = %d\n", c->error_info.SenseLen);
+	printf("ResidualCnt = %d\n", c->error_info.ResidualCnt);
+	printf("SenseInfo = ");
+	if (c->error_info.SenseLen > SENSEINFOBYTES)
+		c->error_info.SenseLen = SENSEINFOBYTES;
+	for (i = 0; i < c->error_info.SenseLen; i++)
+		printf("%02x ", c->error_info.SenseInfo[i]);
+	printf("\n\n");
 }
 
 int do_sense_bus_parameters(char *file, int fd, unsigned char lunaddr[],
@@ -1884,6 +1908,9 @@ int do_sense_bus_parameters(char *file, int fd, unsigned char lunaddr[],
 	/* This happens when we query busses that don't exist. */
 	if (c.error_info.CommandStatus == 4) /* 4 means "invalid command" */
 		return -1;
+
+	if (c.error_info.CommandStatus == 1)
+		print_error_info(&c);
 
 	if (c.error_info.CommandStatus != 0) {
 		fprintf(stderr, "Error getting status for %s "
@@ -1980,6 +2007,7 @@ static void cciss_logical_drive_status(char *file, int fd,
 
 	/* Construct command to get logical drive status */
 	memset(&c, 0, sizeof(c));
+	memset(&ldstatus, 0, sizeof(ldstatus));
 	memcpy(&c.LUN_info, cciss_to_bmic.addr[volume_number].controller_lun, 8);
 	c.Request.CDBLen = 10;
 	c.Request.Type.Type = TYPE_CMD;
@@ -2050,9 +2078,6 @@ static inline int bmic_next_phy_disk(struct identify_controller *id, int bmic_dr
 		return bmic_next_disk_bits((uint8_t *) id->big_drive_present_map, 128, bmic_drive_number); 
 	else
 		return bmic_next_disk_bits((uint8_t *) &id->drive_present_bit_map, 32, bmic_drive_number); 
-	        uint16_t big_drive_present_bit_map[8];
-        uint16_t big_ext_drive_map[8];
-        uint16_t big_non_disk_map[8];
 }
 
 static inline int bmic_next_ext_phy_disk(struct identify_controller *id, int bmic_drive_number)
@@ -2072,7 +2097,7 @@ static inline int bmic_next_non_disk(struct identify_controller *id, int bmic_dr
 }
 
 static void check_physical_drive(char *file, int fd,
-	char *controller_lun, struct identify_controller *id,
+	unsigned char *controller_lun, struct identify_controller *id,
 	int bmic_drive_number)
 {
 	int rc = 0, bus, target;
@@ -2142,7 +2167,6 @@ static void check_ctlr_physical_drives(char *file, int fd,
 static void check_physical_drives(char *file, int fd)
 {
 	int i;
-	unsigned char *controller_lun;
 
 	if (!check_smart_data)
 		return;

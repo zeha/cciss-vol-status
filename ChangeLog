@@ -89,3 +89,10 @@ Date: 2010/10/13 07:40:06
 	* Factor out format_phys_drive_location()
 	* Report S.M.A.R.T. predictive failures
 
+Changes since 1.07:
+
+2010/12/02 09:35:54
+	* Added examples to man page of S.M.A.R.T predictive failure reporting.
+	* make it compile on freebsd
+	* Fix a file descriptor leak
+
