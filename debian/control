@@ -2,7 +2,7 @@ Source: cciss-vol-status
 Section: admin
 Priority: extra
 Maintainer: Christian Hofstaedtler <christian@hofstaedtler.name>
-Build-Depends: debhelper (>= 5), autotools-dev, autoconf, automake1.11
+Build-Depends: debhelper (>= 8), autotools-dev, autoconf, automake1.11
 Build-Conflicts: autoconf2.13, automake1.4
 Standards-Version: 3.9.2
 Homepage: http://cciss.sourceforge.net/
