@@ -1,3 +1,13 @@
+cciss-vol-status (1.09-2) unstable; urgency=low
+
+  * Switched to minimal rules file, to fix lintian warning
+    debian-rules-missing-recommended-target.
+  * Reformatted debian/copyright. Also fixes lintian pedantic check
+    copyright-refers-to-symlink-license.
+  * Add patch so the short form of the --persnickety is accepted.
+
+ -- Christian Hofstaedtler <christian@hofstaedtler.name>  Mon, 29 Aug 2011 01:23:05 +0200
+
 cciss-vol-status (1.09-1) unstable; urgency=low
 
   * New Upstream release 1.09
