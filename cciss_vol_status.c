@@ -131,6 +131,8 @@ struct smartarray_id_t {
 	{ 0x3245103C, "Smart Array P410i",	0, 1},
 	{ 0x3247103C, "Smart Array P411",	0, 1},
 	{ 0x3249103C, "Smart Array P812",	0, 1},
+	{ 0x3355103C, "Smart Array P220i",	0, 1},
+	{ 0x3356103C, "Smart Array P721i",	0, 1},
 	{ 0xe0110e11, "HP MSA500",		1, 0}, /* aka Smart Array CL */
 	{ 0xe0200e11, "HP MSA500 G2",		1, 0},
 	{ 0xe0300e11, "HP MSA20",		1, 0},
@@ -1217,6 +1219,8 @@ static char *hpsa_prod[] = {
 		"HP      P410i",
 		"HP      P411",
 		"HP      P812",
+		"HP      P220i",
+		"HP      P721i",
 		NULL,
 };
 
