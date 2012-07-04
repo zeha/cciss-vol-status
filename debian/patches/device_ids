@@ -1,0 +1,44 @@
+Description: Add P71Xm and Gen8 hardware IDs
+Author: Christian Hofstaedtler <christian@hofstaedtler.name>
+Forwarded: no
+Last-Update: 2012-07-04
+
+Based on a patch by Dean Hamstead. Further device IDs extracted
+from FreeBSD commit r230588. Device IDs confirmed by Mike Miller.
+
+Index: cciss-vol-status/cciss_vol_status.c
+===================================================================
+--- cciss-vol-status.orig/cciss_vol_status.c	2012-07-04 22:58:01.419398220 +0200
++++ cciss-vol-status/cciss_vol_status.c	2012-07-04 23:20:21.850109199 +0200
+@@ -131,6 +131,15 @@
+ 	{ 0x3245103C, "Smart Array P410i",	0, 1},
+ 	{ 0x3247103C, "Smart Array P411",	0, 1},
+ 	{ 0x3249103C, "Smart Array P812",	0, 1},
++	{ 0x324A103C, "Smart Array P712m",	0, 1},
++	{ 0x324B103C, "Smart Array P711m",	0, 1},
++	{ 0x3350103C, "Smart Array P222",	0, 1},
++	{ 0x3351103C, "Smart Array P420",	0, 1},
++	{ 0x3352103C, "Smart Array P421",	0, 1},
++	{ 0x3353103C, "Smart Array P822",	0, 1},
++	{ 0x3354103C, "Smart Array P420i",	0, 1},
++	{ 0x3355103C, "Smart Array P220i",	0, 1},
++	{ 0x3356103C, "Smart Array P721m",	0, 1},
+ 	{ 0xe0110e11, "HP MSA500",		1, 0}, /* aka Smart Array CL */
+ 	{ 0xe0200e11, "HP MSA500 G2",		1, 0},
+ 	{ 0xe0300e11, "HP MSA20",		1, 0},
+@@ -1217,6 +1226,15 @@
+ 		"HP      P410i",
+ 		"HP      P411",
+ 		"HP      P812",
++		"HP      P712m",
++		"HP      P711m",
++		"HP      P222",
++		"HP      P420",
++		"HP      P421",
++		"HP      P822",
++		"HP      P420i",
++		"HP      P220i",
++		"HP      P721m",
+ 		NULL,
+ };
+ 
