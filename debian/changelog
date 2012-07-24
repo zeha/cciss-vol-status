@@ -1,3 +1,11 @@
+cciss-vol-status (1.09-3) unstable; urgency=low
+
+  * Add new hardware IDs for HP G8 servers. (Closes: #680310)
+  * Bump Standards-Version to 3.9.3.
+  * Build with debhelper 9, to import dpkg buildflags.
+
+ -- Christian Hofstaedtler <christian@hofstaedtler.name>  Tue, 24 Jul 2012 23:22:06 +0200
+
 cciss-vol-status (1.09-2) unstable; urgency=low
 
   * Switched to minimal rules file, to fix lintian warning
