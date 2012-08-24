@@ -1,3 +1,11 @@
+cciss-vol-status (1.10-1) unstable; urgency=low
+
+  * Imported Upstream version 1.10
+    * Remove local patch 'device_ids'
+    * Remove local patch 'allow_short_persnickety_option'
+
+ -- Christian Hofstaedtler <christian@hofstaedtler.name>  Fri, 24 Aug 2012 13:12:48 +0200
+
 cciss-vol-status (1.09-3) unstable; urgency=low
 
   * Add new hardware IDs for HP G8 servers. (Closes: #680310)
