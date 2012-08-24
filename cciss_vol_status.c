@@ -47,6 +47,7 @@
 #else
 extern int errno; /* some systems #define this! */
 #endif /* HAVE_ERRNO_H */
+#include <ctype.h>
 
 #include <libgen.h>
 #include <sys/ioctl.h>
@@ -90,6 +91,7 @@ int try_unknown_devices = 0;
 int exhaustive_search = 0;
 int debug = 0;
 int check_smart_data = 0;
+int verbose = 0;
 
 #define MSA1000_ID 0xe0100e11
 
@@ -135,12 +137,22 @@ struct smartarray_id_t {
 	{ 0xe0200e11, "HP MSA500 G2",		1, 0},
 	{ 0xe0300e11, "HP MSA20",		1, 0},
 	{ 0x3118103c, "HP B110i",		0, 1},
+	{ 0x324A103C, "Smart Array P712m", 0, 1},
+	{ 0x324B103C, "Smart Array P711m", 0, 1},
+	{ 0x3350103C, "Smart Array P222", 0, 1},
+	{ 0x3351103C, "Smart Array P420", 0, 1},
+	{ 0x3352103C, "Smart Array P421", 0, 1},
+	{ 0x3353103C, "Smart Array P822", 0, 1},
+	{ 0x3354103C, "Smart Array P420i", 0, 1},
+	{ 0x3355103C, "Smart Array P220i", 0, 1},
+	{ 0x3356103C, "Smart Array P721m", 0, 1},
+
 #ifdef HAVE_SCSI_SG_H
-	{ MSA1000_ID, "MSA1000",	1,},
+	{ MSA1000_ID, "MSA1000",	1, 0},
 #else
 #warning Since <scsi/sg.h> is not around, MSA1000 support will not be compiled.
 #endif
-	{ 0xFFFFFFFF, "Unknown Smart Array",	0,},
+	{ 0xFFFFFFFF, "Unknown Smart Array",	0, 1},
 };
 
 #define ARRAYSIZE(a) (sizeof((a)) / sizeof((a)[0]))
@@ -236,7 +248,7 @@ const char *spare_drive_status_msg[] = {
 struct identify_controller {
 	unsigned char num_logical_drives;
 	uint32_t signature;
-	uint32_t running_firm_rev;
+	unsigned char running_firm_rev[4];
 	unsigned char rom_firm_rev[4];
 	unsigned char hardware_rev;
 	unsigned char reserved[4];
@@ -486,6 +498,7 @@ void usage()
 	fprintf(stderr, "                            (useful for brand new hardware.)\n");
 	fprintf(stderr, " -s  --smart                Report S.M.A.R.T. predictive failures. \n");
 	fprintf(stderr, " -v  --version              Print program version and exit.\n");
+	fprintf(stderr, " -V  --verbose              Print more info about controller and disks.\n");
 	fprintf(stderr, " -C  --copyright            Print copyright notice first.\n");
 	exit(-1);
 }
@@ -513,24 +526,41 @@ static void find_bus_target(struct identify_controller *id, int bmic_drive_numbe
 	*target = bmic_drive_number % drives_per_scsi_bus;
 }
 
+static void copy_drive_field(unsigned char *to, unsigned char *from, int limit)
+{
+	int i;
+
+	for (i = 0; i < limit; i++) {
+		if (isprint(from[i]) || from[i] == '\0')
+			to[i] = from[i];
+		else
+			to[i] = '?';
+	}
+	to[limit] = '\0';
+}
+
 static void format_phys_drive_location(char *location, int bus, int target,
 	int ctlrtype, unsigned char *controller_lun, struct identify_physical_device *device_data)
 {
 	char tail[300];
+	unsigned char model[sizeof(device_data->drive_model) + 1];
+	unsigned char serial_no[sizeof(device_data->drive_serial_no) + 1];
+	unsigned char fw_rev[sizeof(device_data->drive_fw_rev) + 1];
 
 	if (smartarray_id[ctlrtype].can_decode_drive_map && (device_data || !controller_lun))
 		sprintf(location, "    b%dt%d", bus, target);
 	else
 		sprintf(location, "        ");
 	if (device_data && controller_lun) {
+		copy_drive_field(model, device_data->drive_model, sizeof(device_data->drive_model));
+		copy_drive_field(serial_no, device_data->drive_serial_no, sizeof(device_data->drive_serial_no));
+		copy_drive_field(fw_rev, device_data->drive_fw_rev, sizeof(device_data->drive_fw_rev));
 		sprintf(tail, " connector %c%c box %d bay %d %40s %40s %8s",
 			device_data->phys_connector[0],
 			device_data->phys_connector[1],
 			device_data->phys_box_on_bus,
 			device_data->phys_bay_in_box,
-			device_data->drive_model,
-			device_data->drive_serial_no,
-			device_data->drive_fw_rev);
+			model, serial_no, fw_rev);
 	} else
 		sprintf(tail, " connector ?? box ?? bay ?? %40s %40s %8s",
 			"unknown-model",
@@ -546,6 +576,12 @@ static int bitisset(unsigned char bitstring[], int bit, int bitstringlength)
 	unsigned char or_val;
 
 	element = (bit / 8);
+
+	if (element >= bitstringlength) {
+		fprintf(stderr, "Bug detected at %s:%d\n", __FILE__, __LINE__);
+		abort();
+	}
+
 	offset  = bit % 8;
 	or_val = (unsigned char) (1 << offset);
 
@@ -878,8 +914,8 @@ static void print_volume_status(char *file, int fd, int ctlrtype,
 	struct identify_logical_drive_status *vs, struct identify_controller *id,
 	int tolerance_type, int certain)
 {
-	int spare_bit;
-	int i, j, failed_drive_count;
+	unsigned int spare_bit;
+	unsigned int i, j, failed_drive_count;
 	char raid_level[100];
 
 	if (vs->status == 2) {/* This logical drive is not configured, so no status. */
@@ -970,7 +1006,7 @@ static int lookup_controller(uint32_t board_id)
 	return -1;
 }
 
-static void print_bus_status(char *file, int ctlrtype, int controller_number,
+static void print_bus_status(char *file, int ctlrtype,
 	int bus_number, sense_bus_param *bus_param)
 {
 	int alarms;
@@ -1187,49 +1223,6 @@ static int msa1000_passthru_ioctl (int fd, int cmd, void *buffer, int size, unsi
 	return do_sg_io(fd, cdb, cdblen, buffer, size, direction);
 }
 
-static int inquiry_vendor_model_matches(int fd, char *prod[])
-{
-	int status;
-	char std_inq[256];
-	int i;
-
-	status = do_inquiry(fd, 0, (unsigned char *) std_inq, 255);
-	if (status < 0)
-		return 0;
-	for (i = 0; prod[i] != NULL; i++) {
-		if (strncmp(std_inq+8, prod[i], strlen(prod[i])) == 0)
-			return 1;
-	}
-	return 0;
-}
-
-static char *hpahcisr_prod[] = {
-		"HP      B110i",
-		NULL,
-};
-
-static char *hpsa_prod[] = {
-		"HP      P800",
-		"HP      P400",
-		"HP      P700M",
-		"HP      P212",
-		"HP      P410",
-		"HP      P410i",
-		"HP      P411",
-		"HP      P812",
-		NULL,
-};
-
-static inline int is_hpsa(int fd)
-{
-	return inquiry_vendor_model_matches(fd, hpsa_prod);
-}
-
-static inline int is_hpahcisr(int fd)
-{
-	return inquiry_vendor_model_matches(fd, hpahcisr_prod);
-}
-
 static int is_msa1000(int fd)
 {
 	int status;
@@ -1247,11 +1240,30 @@ static int is_msa1000(int fd)
 	return 0;
 }
 
+static int is_smartarray_driver(int fd)
+{
+	struct _cciss_pci_info_struct pciinfo;
+
+	/* If the CCISS_GETPCIINFO ioctl is known, we can presume
+	 * it's a Smart Array.
+	 *
+	 * This does rely on linux's ioctl numbers being unique
+	 * system wide.  Should be the case on vmware and freebsd too.
+	 *
+	 * I memset the buffer to zero anyway just on the off chance that
+	 * this assumption turns out to be false in order to make the
+	 * program at least behave consistently by not passing
+	 * uninitialized stack data to an unknown ioctl. 
+	 */
+	memset(&pciinfo, 0, sizeof(pciinfo));
+	return (ioctl(fd, CCISS_GETPCIINFO, &pciinfo) == 0);
+}
+
 #define MAX_CACHED_DEVICE_NODES 2048
 static struct serial_number_map {
 	char *device_node;
 	char serial_no[16];
-} serial_no_map[MAX_CACHED_DEVICE_NODES] = { { 0 } };
+} serial_no_map[MAX_CACHED_DEVICE_NODES];
 static int ncached_device_nodes = 0;
 
 static char *lookup_cached_device_node(unsigned char *serial_no)
@@ -1434,7 +1446,8 @@ static void free_device_node_cache()
 
 static int all_same(unsigned char *buf, unsigned int bufsize, unsigned char value)
 {
-	int rc, i;
+	unsigned int i;
+	int rc;
 
 	rc = 0;
 	for (i = 0; i < bufsize; i++) {
@@ -1937,7 +1950,7 @@ static void check_fan_power_temp(char *file, int ctlrtype, int fd, int num_contr
 			if (do_sense_bus_parameters(file, fd, controller_lun_list[i],
 				i, j, &bus_param) != 0)
 				continue;
-			print_bus_status(file, ctlrtype, i, j, &bus_param);
+			print_bus_status(file, ctlrtype, j, &bus_param);
 		}
 	}
 }
@@ -2104,6 +2117,7 @@ static void check_physical_drive(char *file, int fd,
 	struct identify_physical_device device_data;
 	char location[1000];
 	int ctlrtype;
+	char status[100];
 
 	ctlrtype = lookup_controller(id->board_id);
 
@@ -2130,18 +2144,24 @@ static void check_physical_drive(char *file, int fd,
 		return;
 	}
 
+	find_bus_target(id, bmic_drive_number, &bus, &target);
+	format_phys_drive_location(location, bus, target, ctlrtype,
+		controller_lun, rc ? NULL : &device_data);
+	sprintf(status, "OK");
 	/* Check S.M.A.R.T data */
+	
 	if (!(device_data.more_physical_drive_flags & 0x01)) /* supports S.M.A.R.T.? */
-		return;
+		goto print_data;
 	if (!(device_data.more_physical_drive_flags & 0x04)) /* S.M.A.R.T enabled? */
-		return;
+		goto print_data;
 	if (device_data.more_physical_drive_flags & 0x02) { /* S.M.A.R.T. predictive failure bit set? */
 		everything_hunky_dory = 0;
-		find_bus_target(id, bmic_drive_number, &bus, &target);
-		format_phys_drive_location(location, bus, target, ctlrtype,
-			controller_lun, rc ? NULL : &device_data);
-		printf("%s S.M.A.R.T. predictive failure.\n", location);
+		sprintf(status, "S.M.A.R.T. predictive failure.");
 	}
+print_data:
+	if (strcmp(status, "OK") == 0 && !verbose)
+		return;
+	printf("%s %s\n", location, status);
 }
 
 static void check_ctlr_physical_drives(char *file, int fd,
@@ -2149,6 +2169,7 @@ static void check_ctlr_physical_drives(char *file, int fd,
 {
 	int i, rc;
 	struct identify_controller id;
+	int physical_drive_count = 0;
 
 	rc = id_ctlr_fd(file, fd, controller_lun, &id);
 	if (rc != 0) {
@@ -2159,6 +2180,13 @@ static void check_ctlr_physical_drives(char *file, int fd,
 		everything_hunky_dory = 0;
 		return;
 	}
+
+	for (i = bmic_next_phy_disk(&id, -1); i != -1; i = bmic_next_phy_disk(&id, i))
+		physical_drive_count++;
+
+	if (verbose)
+		printf("  Physical drives: %d\n", physical_drive_count);
+
 	/* For each physical disk i... */
 	for (i = bmic_next_phy_disk(&id, -1); i != -1; i = bmic_next_phy_disk(&id, i))
 		check_physical_drive(file, fd, controller_lun, &id, i);
@@ -2168,11 +2196,27 @@ static void check_physical_drives(char *file, int fd)
 {
 	int i;
 
-	if (!check_smart_data)
+	if (!check_smart_data && !verbose)
 		return;
 
 	for (i = 0; i < num_controllers; i++)
 		check_ctlr_physical_drives(file, fd, controller_lun_list[i]);
+}
+
+static void print_controller_info(struct identify_controller *id, int ctlrtype)
+{
+	if (!verbose)
+		return;
+
+	printf("Controller: %s\n", smartarray_id[ctlrtype].board_name);
+	printf("  Board ID: 0x%08x\n", id->board_id);
+	printf("  Logical drives: %hu\n", id->usExtLogicalUnitCount);
+	printf("  Running firmware: %c%c%c%c\n",
+		id->running_firm_rev[0], id->running_firm_rev[1],
+		id->running_firm_rev[2], id->running_firm_rev[3]);
+	printf("  ROM firmware: %c%c%c%c\n",
+		id->rom_firm_rev[0], id->rom_firm_rev[1],
+		id->rom_firm_rev[2], id->rom_firm_rev[3]);
 }
 
 static int cciss_status(char *file)
@@ -2203,7 +2247,7 @@ static int cciss_status(char *file)
 		if (is_msa1000(fd))
 			return msa1000_status(file, fd);
 
-		if (!is_hpsa(fd) && !is_hpahcisr(fd)) {
+		if (!is_smartarray_driver(fd)) {
 			fprintf(stderr, "%s: %s: Unknown SCSI device.\n", progname, file);
 			if (persnickety)
 				everything_hunky_dory = 0;
@@ -2232,6 +2276,8 @@ static int cciss_status(char *file)
 			everything_hunky_dory = 0;
 		return -1;
 	}
+
+	print_controller_info(&id, ctlrtype);
 
 	/* Construct mapping of CISS LUN addresses to "the BMIC way" */
 	rc = init_cciss_to_bmic(file, fd);
@@ -2277,6 +2323,7 @@ static struct option longopts[] = {
 	{ "exhaustive", 0, NULL, 'x'},
 	{ "smart", 0, NULL, 's'},
 	{ "copyright", 0, NULL, 'C'}, /* opposite of -q */
+	{ "verbose", 0, NULL, 'V'},
 	{ NULL, 0, NULL, 0},
 };
 
@@ -2286,7 +2333,7 @@ int main(int argc, char *argv[])
 
 	do {
 
-		opt = getopt_long(argc, argv, "dqusvxC", longopts, NULL );
+		opt = getopt_long(argc, argv, "dpqusvVxC", longopts, NULL );
 		switch (opt) {
 			case 'd': debug = 1;
 				continue;
@@ -2312,6 +2359,8 @@ int main(int argc, char *argv[])
 				  exit(0);
 			case 'x' : exhaustive_search = 1;
 					/* exhaustive search doesn't really do anything anymore. */
+				continue;
+			case 'V' : verbose = 1;
 				continue;
 			case '?' :
 			case ':' :
