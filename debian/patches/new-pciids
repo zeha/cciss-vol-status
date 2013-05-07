@@ -1,0 +1,20 @@
+Index: cciss-vol-status/cciss_vol_status.c
+===================================================================
+--- cciss-vol-status.orig/cciss_vol_status.c	2013-05-06 14:46:14.573286728 +0200
++++ cciss-vol-status/cciss_vol_status.c	2013-05-08 00:07:27.079625508 +0200
+@@ -146,6 +146,15 @@
+ 	{ 0x3354103C, "Smart Array P420i", 0, 1},
+ 	{ 0x3355103C, "Smart Array P220i", 0, 1},
+ 	{ 0x3356103C, "Smart Array P721m", 0, 1},
++	{ 0x1920103C, "Smart Array", 0, 1},
++	{ 0x1921103C, "Smart Array", 0, 1},
++	{ 0x1922103C, "Smart Array", 0, 1},
++	{ 0x1923103C, "Smart Array", 0, 1},
++	{ 0x1924103C, "Smart Array", 0, 1},
++	{ 0x1925103C, "Smart Array", 0, 1},
++	{ 0x1926103C, "Smart Array", 0, 1},
++	{ 0x1928103C, "Smart Array", 0, 1},
++	{ 0x334D103C, "Smart Array P822se", 0, 1},
+ 
+ #ifdef HAVE_SCSI_SG_H
+ 	{ MSA1000_ID, "MSA1000",	1, 0},
