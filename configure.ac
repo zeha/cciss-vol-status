@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(cciss_vol_status, 1.10, smcameron@users.sourceforge.net)
+AC_INIT(cciss_vol_status, 1.09, smcameron@users.sourceforge.net)
 AC_CONFIG_SRCDIR([cciss_vol_status.c])
 AC_CONFIG_HEADER([config.h])
 

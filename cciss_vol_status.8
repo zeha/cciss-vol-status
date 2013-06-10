@@ -1,7 +1,7 @@
-.\" Copyright (C) 2006,2007,2012 Hewlett-Packard Development Company, L.P.
+.\" Copyright (C) 2006,2007 Hewlett-Packard Development Company, L.P.
 .\"
 .\"
-.\"	Copyright 2006,2007,2012 Hewlett-Packard Development Company, L.P.
+.\"	Copyright 2006,2007 Hewlett-Packard Development Company, L.P.
 .\"
 .\"	Author: Stephen M. Cameron
 .\"
@@ -21,7 +21,7 @@
 .\"	along with cciss_vol_status; if not, write to the Free Software
 .\"	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 .\"	
-.TH CCISS_VOL_STATUS "8" "Aug 2012" "cciss_vol_status (ccissutils) " ""
+.TH CCISS_VOL_STATUS "8" "Nov 2009" "cciss_vol_status (ccissutils) " ""
 .SH NAME
 cciss_vol_status \- show status of logical drives attached to HP Smartarray controllers
 .SH SYNOPSIS
@@ -71,13 +71,6 @@ in fact a Smart Array of some kind.
 .TP
 \fB\-v, --version\fR
 Print the version number and exit.
-.TP
-\fB\-V, --verbose\fR
-Print out more information about the controllers and physical drives.
-For each controller, the board ID, number of logical drives, currently
-running firmware revision and ROM firmware revision are printed.  For
-each physical drive, the location, vendor, model, serial number,
-and firmware revision are printed.
 .TP
 \fB\-x, --exhaustive\fR
 Deprecated.  Previously, it "exhaustively" searched for logical
@@ -171,18 +164,6 @@ which corresponds to the HP P800 RAID controller listed in /proc/scsi/scsi.
 	/dev/cciss/c0d0: (Smart Array P800) RAID 0 Volume 0 status: OK. 
 		 connector 2E box 1 bay 8                 HP      DF300BB6C3                           3LM08AP700009713RXUT     HPD3 S.M.A.R.T. predictive failure.
 	/dev/cciss/c0d0: (Smart Array P800) Enclosure MSA60 (S/N: USP6340B3F) on Bus 2, Physical Port 2E status: OK.
-
-
-
-	[root@localhost]# ./cciss_vol_status --verbose /dev/sg0
-	Controller: Smart Array P410
-	  Board ID: 0x3243103c
-	  Logical drives: 1
-	  Running firmware: 5.70
-	  ROM firmware: 5.70
-	/dev/sda: (Smart Array P410) RAID 0 Volume 0 status: OK. 
-	  Physical drives: 1
-		 connector 2I box 1 bay 1                 HP      EG0146FAWHU                          6SD1QH2X0000B117LGHR     HPDE OK
 
 .DE
 .fi
@@ -297,19 +278,15 @@ hpahcisr software RAID driver.)
 0 - All configured logical drives queried have status of "OK." 
 .TP
 1 - One or more configured logical drives queried have status other than "OK."
-.SH BUGS
+.SH AUTHOR
+Written by Stephen M. Cameron 
+.SH "REPORTING BUGS"
 .P
 MSA500 G1 logical drive numbers may not be reported correctly.
 .P
 I've seen enclosure serial numbers contain garbage.
 .P
-Some Smart Arrays support more than 128 physical drives on a single RAID
-controller.  cciss_vol_status does not.
-.SH AUTHOR
-Written by Stephen M. Cameron 
-.SH "REPORTING BUGS"
-.P
-Report bugs to <scameron@beardog.cce.hp.com>
+Report bugs to <steve.cameron@hp.com>
 .SH COPYRIGHT
 Copyright \(co 2007 Hewlett-Packard Development Company, L.P.
 .br
