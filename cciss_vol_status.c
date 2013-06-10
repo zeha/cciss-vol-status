@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2006,2007 Hewlett-Packard Development Company, L.P.
+	Copyright (C) 2006,2007,2012,2013 Hewlett-Packard Development Company, L.P.
 	Author: Stephen M. Cameron
 
 	This file is part of cciss_vol_status.
@@ -38,6 +38,17 @@
 #include <unistd.h>
 #endif /* HAVE_UNISTD_H */
 
+#ifdef HAVE_STDBOOL_H
+# include <stdbool.h>
+#else
+# ifndef HAVE__BOOL
+#   define _Bool signed char
+# endif
+# define bool _Bool
+# define false 0
+# define true 1
+#endif /* HAVE_STDBOOL_H */
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -47,6 +58,7 @@
 #else
 extern int errno; /* some systems #define this! */
 #endif /* HAVE_ERRNO_H */
+#include <ctype.h>
 
 #include <libgen.h>
 #include <sys/ioctl.h>
@@ -83,13 +95,14 @@ extern int errno; /* some systems #define this! */
 #define ID_CTLR 0x11 /* Identify controller */
 #define ID_LSTATUS 0x12 /* identify logical drive status */
 
-int everything_hunky_dory = 1;
+bool everything_hunky_dory = true;
 int persnickety = 0;
 int be_quiet = 1;
 int try_unknown_devices = 0;
 int exhaustive_search = 0;
 int debug = 0;
 int check_smart_data = 0;
+int verbose = 0;
 
 #define MSA1000_ID 0xe0100e11
 
@@ -135,28 +148,55 @@ struct smartarray_id_t {
 	{ 0xe0200e11, "HP MSA500 G2",		1, 0},
 	{ 0xe0300e11, "HP MSA20",		1, 0},
 	{ 0x3118103c, "HP B110i",		0, 1},
+	{ 0x324A103C, "Smart Array P712m", 0, 1},
+	{ 0x324B103C, "Smart Array P711m", 0, 1},
+	{ 0x3350103C, "Smart Array P222", 0, 1},
+	{ 0x3351103C, "Smart Array P420", 0, 1},
+	{ 0x3352103C, "Smart Array P421", 0, 1},
+	{ 0x3353103C, "Smart Array P822", 0, 1},
+	{ 0x3354103C, "Smart Array P420i", 0, 1},
+	{ 0x3355103C, "Smart Array P220i", 0, 1},
+	{ 0x3356103C, "Smart Array P721m", 0, 1},
+	{ 0x1920103C, "Smart Array", 0, 1},
+	{ 0x1921103C, "Smart Array", 0, 1},
+	{ 0x1922103C, "Smart Array", 0, 1},
+	{ 0x1923103C, "Smart Array", 0, 1},
+	{ 0x1924103C, "Smart Array", 0, 1},
+	{ 0x1925103C, "Smart Array", 0, 1},
+	{ 0x1926103C, "Smart Array", 0, 1},
+	{ 0x1928103C, "Smart Array", 0, 1},
+	{ 0x334D103C, "Smart Array P822se", 0, 1},
+	{ 0x00451590, "Dynamic Smart Array B320i", 0, 1},
+	{ 0x00471590, "Dynamic Smart Array B320i", 0, 1}, 
+	{ 0x00481590, "Dynamic Smart Array B120i", 0, 1},
+	{ 0x006C1590, "Dynamic Smart Array B120i", 0, 1},
+	{ 0x00841590, "Dynamic Smart Array B120i", 0, 1},
+
+
 #ifdef HAVE_SCSI_SG_H
-	{ MSA1000_ID, "MSA1000",	1,},
+	{ MSA1000_ID, "MSA1000",	1, 0},
 #else
 #warning Since <scsi/sg.h> is not around, MSA1000 support will not be compiled.
 #endif
-	{ 0xFFFFFFFF, "Unknown Smart Array",	0,},
+	{ 0xFFFFFFFF, "Unknown Smart Array",	0, 1},
 };
 
 #define ARRAYSIZE(a) (sizeof((a)) / sizeof((a)[0]))
 #define UNKNOWN_CONTROLLER ARRAYSIZE(smartarray_id)
 
-unsigned long long zero_lun = 0x00ULL;
-#define ZEROLUN ((unsigned char *) &zero_lun)
+static unsigned char *zero_lun = (unsigned char *) "\0\0\0\0\0\0\0\0";
 
 /* cciss_to_bmic maps cciss logical lun to correspoding
    (controller_lun, BMIC drive number) tuple via cross
    referencing inquiry page 0x83 data with
    BMIC ID logical drive data */
 
+#define CISS_LUN_ADDR_SIZE 8
+#define MAX_LUNS 1024  /* 1024 should do us for awhile */
+
 struct cciss_bmic_addr_t {
-	unsigned char logical_lun[8];
-	unsigned char controller_lun[8];
+	unsigned char logical_lun[CISS_LUN_ADDR_SIZE];
+	unsigned char controller_lun[CISS_LUN_ADDR_SIZE];
 	unsigned short bmic_drive_number;
 	unsigned char bmic_id_ctlr_data[100];
 	unsigned char inq_pg_0x83_data[100];
@@ -165,21 +205,21 @@ struct cciss_bmic_addr_t {
 };
 
 struct bmic_addr_t {
-	unsigned char controller_lun[8];
+	unsigned char controller_lun[CISS_LUN_ADDR_SIZE];
 	unsigned short bmic_drive_number;
 	int tolerance_type;
 };
 
 struct cciss_to_bmic_t {
 	int naddrs;
-	struct cciss_bmic_addr_t addr[1024];  /* 1024 should do us for awhile */
+	struct cciss_bmic_addr_t addr[MAX_LUNS];
 } cciss_to_bmic;
 
 /* List of controllers -- not all controllers in the system, just the
    internal one (e.g. all zero luns, plus externally attached ones --
    like MSA500. */
 #define MAX_CONTROLLERS 256 /* this is a ridiculously large number */
-unsigned char controller_lun_list[MAX_CONTROLLERS][8];
+unsigned char controller_lun_list[MAX_CONTROLLERS][CISS_LUN_ADDR_SIZE];
 int busses_on_this_ctlr[MAX_CONTROLLERS];
 int num_controllers = 0;
 
@@ -236,7 +276,7 @@ const char *spare_drive_status_msg[] = {
 struct identify_controller {
 	unsigned char num_logical_drives;
 	uint32_t signature;
-	uint32_t running_firm_rev;
+	unsigned char running_firm_rev[4];
 	unsigned char rom_firm_rev[4];
 	unsigned char hardware_rev;
 	unsigned char reserved[4];
@@ -248,7 +288,6 @@ struct identify_controller {
 	unsigned char reserved3[5];
 	unsigned char marketing_revision;
 	unsigned char controller_flags;
-	// unsigned char reserved4[2];
 	unsigned char host_flags;
 	unsigned char expand_disable_code;
 	unsigned char scsi_chip_count;
@@ -476,6 +515,83 @@ struct identify_physical_device {
 #define BMIC_IDENTIFY_PHYSICAL_DEVICE 0x15
 #pragma pack()
 
+#define CISS_READ 0x26
+#define CISS_MAX_CDB_LEN 16
+#define DEVICE_TYPE_RAID 0x0c
+#define CISS_REPORT_LOGICAL_LUNS 0xc2
+#define CISS_REPORT_PHYSICAL_LUNS 0xc3
+#define REPORT_LUNS_FLAG_PHYSICAL_NODE_IDS (1 << 0)
+#define REPORT_LUNS_FLAG_OTHER_PHYS_DEV_INFO (1 << 1)
+#define REPORT_LUNS_EXTENDED_MASK 0x03
+#define REPORT_LUNS_HEADER_SIZE 8
+#define REPORT_LUNS_ENTRY_SIZE(extended) (8 + (extended ? 1 : 0) * 16)
+#define EXTENDED_REPORT_LUNS_ENTRY_SIZE REPORT_LUNS_ENTRY_SIZE(true)
+
+#pragma pack(1)
+#define BMIC_SENSE_CACHE_CONFIGURATION 0xc1
+#define SENSE_CACHE_CONFIG_CDB_LEN 10
+struct bmic_transfer_data {
+	uint8_t memory_address_hi_dir;
+	uint16_t memory_address_lo;
+	uint16_t transfer_count;
+};
+
+struct bmic_cache_configuration {
+	uint32_t posted_writes_drive_bit_map;
+	uint16_t mem_for_read_cache;
+	uint16_t mem_for_write_cache;
+	uint8_t  disable_flag;
+	uint16_t offset_to_ecu_bitmap;
+	uint16_t offset_to_ecf_bitmap;
+	uint16_t offset_to_ercdu_bitmap;
+	uint8_t reserved1;
+	uint32_t total_length;
+	uint16_t max_log_drv_supported;
+	uint8_t reserved2[10];
+	uint32_t status;
+#define BMIC_POSTED_WRITE_STATUS_ENABLED		(1 << 0)
+#define BMIC_POSTED_WRITE_TEMP_DISABLED			(1 << 1)
+#define BMIC_POSTED_WRITE_PERM_DISABLED			(1 << 2)
+#define BMIC_POSTED_WRITE_VALID_DATA_ON_RESET_FOUND	(1 << 3)
+#define BMIC_POSTED_WRITE_POSSIBLE_DATA_LOSS_ON_RESET	(1 << 4)
+			/* bits 5,6 not implemented, 7 is weird */
+#define BMIC_POSTED_WRITE_UNFLUSHED_DIRTY_DATA		(1 << 8)
+#define BMIC_POSTED_WRITE_DIRTY_DATA_LIMIT_REACHED	(1 << 9)
+#define BMIC_POSTED_WRITE_ECC_ERRORS_DETECTED		(1 << 10)
+#define BMIC_POSTED_WRITE_DATA_LOSS_OTHER		(1 << 11)
+#define BMIC_POSTED_WRITE_AUTO_RECONFIG			(1 << 12)
+#define BMIC_POSTED_WRITE_REDUNDCTLR_VALID_DATA_FOUND	(1 << 13)
+#define BMIC_POSTED_WRITE_BATTERY_ENABLE_HW_PROBLEM	(1 << 14)
+#define BMIC_POSTED_WRITE_CPLD_BBWC_INCOMPATIBILITY	(1 << 15)
+#define BMIC_POSTED_WRITE_CAPACITOR_ATTACHED		(1 << 16)
+#define BMIC_POSTED_WRITE_161718_CACHE_DISABLED		(1 << 30)
+	uint16_t disable_code;
+	uint16_t total_memory_size;
+	uint16_t battery_count;
+	uint16_t good_battery_map;
+	uint16_t parity_read_errors;
+	uint16_t parity_write_errors;
+#define BMIC_XFER_DATA_ERROR_LOG_LENGTH 32
+	struct bmic_transfer_data  error_log[BMIC_XFER_DATA_ERROR_LOG_LENGTH];
+	uint16_t failed_battery_map;
+	uint8_t daughter_board_attached;
+	uint32_t cache_failure_map;
+	uint8_t max_error_log_entries;
+	uint8_t nvarm_load_status;
+	uint8_t memory_size_shift_factor;
+	uint16_t non_battery_backed_memory_size;
+	uint8_t memory_state;
+	uint8_t cache_autorev;
+	uint16_t total_attached_memory;
+	uint8_t percent_read_cache;
+	uint8_t percent_write_cache;
+	uint8_t default_percent_read_cache;
+	uint8_t default_percent_write_cache;
+#define BMIC_CACHE_CONFIG_PAD_TO_512_BYTES 284
+	uint8_t reserved[BMIC_CACHE_CONFIG_PAD_TO_512_BYTES];
+};
+#pragma pack()
+
 char *progname = "cciss_vol_status";
 
 void usage()
@@ -486,8 +602,16 @@ void usage()
 	fprintf(stderr, "                            (useful for brand new hardware.)\n");
 	fprintf(stderr, " -s  --smart                Report S.M.A.R.T. predictive failures. \n");
 	fprintf(stderr, " -v  --version              Print program version and exit.\n");
+	fprintf(stderr, " -V  --verbose              Print more info about controller and disks.\n");
 	fprintf(stderr, " -C  --copyright            Print copyright notice first.\n");
 	exit(-1);
+}
+
+static void set_cdb_buffer_length(unsigned char *cdb, uint16_t buflen)
+{
+#define CDBBUFLEN 7 /* buffer length commonly stored at byte 7 in CDB */
+	cdb[CDBBUFLEN] = (buflen >> 8) & 0xff;
+	cdb[CDBBUFLEN + 1] = buflen & 0xff;
 }
 
 static void find_bus_target(struct identify_controller *id, int bmic_drive_number,
@@ -513,24 +637,41 @@ static void find_bus_target(struct identify_controller *id, int bmic_drive_numbe
 	*target = bmic_drive_number % drives_per_scsi_bus;
 }
 
+static void copy_drive_field(unsigned char *to, unsigned char *from, int limit)
+{
+	int i;
+
+	for (i = 0; i < limit; i++) {
+		if (isprint(from[i]) || from[i] == '\0')
+			to[i] = from[i];
+		else
+			to[i] = '?';
+	}
+	to[limit] = '\0';
+}
+
 static void format_phys_drive_location(char *location, int bus, int target,
 	int ctlrtype, unsigned char *controller_lun, struct identify_physical_device *device_data)
 {
 	char tail[300];
+	unsigned char model[sizeof(device_data->drive_model) + 1];
+	unsigned char serial_no[sizeof(device_data->drive_serial_no) + 1];
+	unsigned char fw_rev[sizeof(device_data->drive_fw_rev) + 1];
 
 	if (smartarray_id[ctlrtype].can_decode_drive_map && (device_data || !controller_lun))
 		sprintf(location, "    b%dt%d", bus, target);
 	else
 		sprintf(location, "        ");
 	if (device_data && controller_lun) {
+		copy_drive_field(model, device_data->drive_model, sizeof(device_data->drive_model));
+		copy_drive_field(serial_no, device_data->drive_serial_no, sizeof(device_data->drive_serial_no));
+		copy_drive_field(fw_rev, device_data->drive_fw_rev, sizeof(device_data->drive_fw_rev));
 		sprintf(tail, " connector %c%c box %d bay %d %40s %40s %8s",
 			device_data->phys_connector[0],
 			device_data->phys_connector[1],
 			device_data->phys_box_on_bus,
 			device_data->phys_bay_in_box,
-			device_data->drive_model,
-			device_data->drive_serial_no,
-			device_data->drive_fw_rev);
+			model, serial_no, fw_rev);
 	} else
 		sprintf(tail, " connector ?? box ?? bay ?? %40s %40s %8s",
 			"unknown-model",
@@ -546,6 +687,12 @@ static int bitisset(unsigned char bitstring[], int bit, int bitstringlength)
 	unsigned char or_val;
 
 	element = (bit / 8);
+
+	if (element >= bitstringlength) {
+		fprintf(stderr, "Bug detected at %s:%d\n", __FILE__, __LINE__);
+		abort();
+	}
+
 	offset  = bit % 8;
 	or_val = (unsigned char) (1 << offset);
 
@@ -602,7 +749,7 @@ static void setup_for_ioctl(IOCTL_Command_struct *cmd,
 {
 	memset(cmd, 0, sizeof(*cmd));
 	if (lun != NULL)
-		memcpy(&cmd->LUN_info, lun, 8);
+		memcpy(&cmd->LUN_info, lun, CISS_LUN_ADDR_SIZE);
 	cmd->Request.CDBLen = cdblen;
 	cmd->Request.Type.Type = TYPE_CMD;
 	cmd->Request.Type.Attribute = ATTR_SIMPLE;
@@ -613,44 +760,66 @@ static void setup_for_ioctl(IOCTL_Command_struct *cmd,
 	cmd->buf = buf;
 }
 
-static int do_report_luns(char *filename, int fd, int *count, unsigned char *lun, int physical)
+static void print_report_lun_data(char *title, int count_in_bytes,
+					unsigned char *data, bool extended)
+{
+	int i;
+	int lun_count;
+	int bytes_per_lun;
+	int lun;
+
+	bytes_per_lun = REPORT_LUNS_ENTRY_SIZE(extended);
+
+	lun_count = count_in_bytes / REPORT_LUNS_ENTRY_SIZE(extended);
+
+	printf("%s (%s)\n", title, extended ? "(extended)" : "");
+	printf("bytecount = %d, lun count = %d \n", count_in_bytes, lun_count);
+
+	lun = 0;
+	for (i = 0; i < count_in_bytes; i++) {
+		if ((i % bytes_per_lun) == 0)
+			printf("\n%d: ", lun);
+		printf("%02x", data[i - REPORT_LUNS_HEADER_SIZE]);
+	}
+	printf("\n\n");
+}
+
+static int do_report_luns(char *filename, int fd, int *count,
+				unsigned char *lun, int physical, int extended_flags)
 {
 	IOCTL_Command_struct cmd;
 	int rc;
-	unsigned char cdb[16];
+	unsigned char cdb[CISS_MAX_CDB_LEN];
 	unsigned int bufsize;
 	char *cmdname;
 	int becount;
+	bool extended = (extended_flags & REPORT_LUNS_EXTENDED_MASK);
 
-	memset(lun, 0, *count * 8);
-	bufsize = htonl(*count *8);
+	memset(lun, 0, *count * REPORT_LUNS_ENTRY_SIZE(extended));
+	bufsize = htonl(*count * REPORT_LUNS_ENTRY_SIZE(extended));
 	memset(cdb, 0, 16);
-	cdb[0] = physical ? 0xc3 : 0xc2; /* report physical/logical LUNs */
+	cdb[0] = physical ? CISS_REPORT_PHYSICAL_LUNS : CISS_REPORT_LOGICAL_LUNS;
+	cdb[1] = extended_flags;
 	memcpy(&cdb[6], &bufsize, 4);
 
-	setup_for_ioctl(&cmd, ZEROLUN, cdb, 12, 0, lun, *count * 8);
+	setup_for_ioctl(&cmd, zero_lun, cdb, 12, 0, lun, *count * 8);
 	rc = ioctl(fd, CCISS_PASSTHRU, &cmd);
-	cmdname = physical ? "REPORT_PHYSICAL" : "REPORT_LOGICAL";
+
+	if (physical)
+		cmdname = extended ? "REPORT_PHYSICAL (extended)" : "REPORT_PHYSICAL";
+	else
+		cmdname = extended ? "REPORT_LOGICAL (extended)" : "REPORT_LOGICAL";
 	CHECK_IOCTL(filename, cmdname, rc, &cmd, -1); /* macro which may return... */
 
 	/* memcpy to avoid possible unaligned access on ia64, */
 	/* in case lun isn't aligned on a 4 byte boundary */
 	/* (it is, but, why assume it?). */
 	memcpy(&becount, lun, sizeof(becount));
-	*count = ntohl(becount) / 8;
+	*count = ntohl(becount) / REPORT_LUNS_ENTRY_SIZE(extended);
 
-	if (debug) {
-		int i;
-		fprintf(stderr, "%s: %d %s luns:\n\n", filename, *count, physical ? "physical" : "logical");
-		for (i = 8; i < (*count+1) * 8; i++) {
-			if ((i % 8) == 0)
-				fprintf(stderr, "%d:  ", (i-1) / 8);
-			fprintf(stderr, "%02x", lun[i]);
-			if (((i+1) % 8) == 0)
-				fprintf(stderr, "\n");
-		}
-		fprintf(stderr, "\n");
-	}
+	if (debug)
+		print_report_lun_data(physical ? "Report physical luns" : "Report logical luns",
+					ntohl(becount), lun, extended);
 	return 0;
 }
 
@@ -659,20 +828,41 @@ static int do_bmic_id_logical_drive(char *filename, int fd,
 	unsigned char *buffer)
 {
 	IOCTL_Command_struct cmd;
-	unsigned char cdb[16];
-	unsigned short buffer_size = htons(512); /* Always 512 bytes for this cmd */
+	unsigned char cdb[CISS_MAX_CDB_LEN];
 	int rc;
 
 	memset(cdb, 0, 16);
-	cdb[0] = 0x26; /* cciss read */
+	cdb[0] = CISS_READ;
 	cdb[1] = 0xff & bmic_drive_number;
 	cdb[6] = ID_LOGICAL_DRIVE;
-	memcpy(&cdb[7], &buffer_size, 2);
+	set_cdb_buffer_length(cdb, 512); /* Always 512 bytes for this cmd */
 	cdb[9] = 0xff && (bmic_drive_number >> 8);
 
 	setup_for_ioctl(&cmd, controller_lun, cdb, 16, 0, buffer, 512);
 	rc = ioctl(fd, CCISS_PASSTHRU, &cmd);
 	CHECK_IOCTL(filename, "IDENTIFY_LOGICAL_DRIVE", rc, &cmd, -1); /* macro which may return... */
+	return 0;
+}
+
+static int do_sense_cache_configuration(char *filename, int fd,
+	unsigned char *controller_lun,
+	struct bmic_cache_configuration *cache_config)
+{
+	IOCTL_Command_struct cmd;
+	unsigned char cdb[CISS_MAX_CDB_LEN];
+	int rc;
+
+	memset(cdb, 0, 16);
+	cdb[0] = CISS_READ;
+	cdb[6] = BMIC_SENSE_CACHE_CONFIGURATION;
+	set_cdb_buffer_length(cdb, sizeof(*cache_config));
+
+	setup_for_ioctl(&cmd, controller_lun, cdb, SENSE_CACHE_CONFIG_CDB_LEN, 0,
+				(unsigned char *) cache_config,
+				sizeof(*cache_config));
+	rc = ioctl(fd, CCISS_PASSTHRU, &cmd);
+	CHECK_IOCTL(filename, "BMIC_SENSE_CACHE_CONFIGURATION",
+				rc, &cmd, -1); /* macro which may return... */
 	return 0;
 }
 
@@ -682,25 +872,24 @@ static int do_bmic_identify_physical_device(char *filename, int fd,
 {
 	IOCTL_Command_struct cmd;
 	int is_internal_controller;
-	uint8_t lunzero[8];
-	uint16_t buflen_be;
+	uint8_t lunzero[CISS_LUN_ADDR_SIZE];
 	int rc;
 
 	memset(&cmd, 0, sizeof(cmd));
 	memset(lunzero, 0, sizeof(lunzero));
 
-	is_internal_controller = (memcmp(lunzero, controller_lun, 8) == 0);
-	buflen_be = htons(sizeof(*id_phys_device));
+	is_internal_controller = (memcmp(lunzero, controller_lun,
+						CISS_LUN_ADDR_SIZE) == 0);
 	memcpy(&cmd.LUN_info, controller_lun, sizeof(cmd.LUN_info));
         cmd.Request.CDBLen = 10;
-        cmd.Request.CDB[0] = 0x26; /* CISS READ */
+        cmd.Request.CDB[0] = CISS_READ;
         if (is_internal_controller)
                 cmd.Request.CDB[2] = bmic_drive_number & 0xff;
         else
                 cmd.Request.CDB[5] = bmic_drive_number & 0xff;
         cmd.Request.CDB[6] = BMIC_IDENTIFY_PHYSICAL_DEVICE;
         cmd.Request.CDB[9] = (bmic_drive_number >> 8) & 0xff;
-        memcpy(&cmd.Request.CDB[7], &buflen_be, sizeof(buflen_be));
+	set_cdb_buffer_length(cmd.Request.CDB, sizeof(*id_phys_device));
         cmd.Request.Type.Type = TYPE_CMD;
         cmd.Request.Type.Attribute = ATTR_SIMPLE;
         cmd.Request.Type.Direction = XFER_READ;
@@ -719,13 +908,12 @@ static int do_sg_io(int fd, unsigned char *cdb, unsigned char cdblen, unsigned c
 static int do_sgio_bmic_identify_physical_device(int fd, int bmic_drive_number,
 	struct identify_physical_device *id_phys_device)
 {
-	unsigned char cdb[16];
-	uint8_t lunzero[8];
-	uint16_t buflen_be;
+	unsigned char cdb[CISS_MAX_CDB_LEN];
+	uint8_t lunzero[CISS_LUN_ADDR_SIZE];
 
 	memset(lunzero, 0, sizeof(lunzero));
 
-        cdb[0] = 0x26; /* CISS READ */
+        cdb[0] = CISS_READ;
 
 	/* This is tricky.  We're supposed to use either byte 2, or byte 5
 	 * for the bmic drive number depending on if the controller is internal
@@ -738,8 +926,7 @@ static int do_sgio_bmic_identify_physical_device(int fd, int bmic_drive_number,
 	cdb[5] = bmic_drive_number & 0xff;
         cdb[6] = BMIC_IDENTIFY_PHYSICAL_DEVICE;
         cdb[9] = (bmic_drive_number >> 8) & 0xff;
-	buflen_be = htons(sizeof(id_phys_device));
-        memcpy(&cdb[7], &buflen_be, sizeof(buflen_be));
+	set_cdb_buffer_length(cdb, sizeof(id_phys_device));
 
 	return do_sg_io(fd, cdb, 10, (unsigned char *) &id_phys_device,
 		sizeof(id_phys_device), SG_DXFER_FROM_DEV);
@@ -750,18 +937,16 @@ static int lookup_controller(uint32_t board_id);
 static int id_ctlr_fd(char * filename, int fd, unsigned char *lun, struct identify_controller *id)
 {
 	int rc;
-	unsigned char cdb[16];
+	unsigned char cdb[CISS_MAX_CDB_LEN];
 	IOCTL_Command_struct cmd;
-	unsigned short bebufsize;
 	int ctlrtype;
 
 	memset(id, 0, sizeof(*id));
 	memset(&cmd, 0, sizeof(cmd));
 	memset(cdb, 0, 16);
-	bebufsize = htons(sizeof(*id));
-	cdb[0] = 0x26;
+	cdb[0] = CISS_READ;
 	cdb[6] = ID_CTLR;
-	memcpy(&cdb[7], &bebufsize, 2);
+	set_cdb_buffer_length(cdb, sizeof(*id));
 
 	setup_for_ioctl(&cmd, lun, cdb, 10, 0, (unsigned char *) id, sizeof(*id));
 	rc = ioctl(fd, CCISS_PASSTHRU, &cmd);
@@ -771,7 +956,7 @@ static int id_ctlr_fd(char * filename, int fd, unsigned char *lun, struct identi
 	if (ctlrtype == -1) {
 		fprintf(stderr, "%s: Warning: unknown controller type 0x%08x\n",
 			progname, id->board_id);
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 	} else if (ctlrtype == -1 || smartarray_id[ctlrtype].supports_sas) {
 		id->drives_per_scsi_bus = 16; /* bit of a kludge here */
 		id->scsi_chip_count = 8;
@@ -878,8 +1063,8 @@ static void print_volume_status(char *file, int fd, int ctlrtype,
 	struct identify_logical_drive_status *vs, struct identify_controller *id,
 	int tolerance_type, int certain)
 {
-	int spare_bit;
-	int i, j, failed_drive_count;
+	unsigned int spare_bit;
+	unsigned int i, j, failed_drive_count;
 	char raid_level[100];
 
 	if (vs->status == 2) {/* This logical drive is not configured, so no status. */
@@ -889,7 +1074,7 @@ static void print_volume_status(char *file, int fd, int ctlrtype,
 	}
 
 	if (vs->status != 0)
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 
 	switch (tolerance_type) {
 		case 0: sprintf(raid_level, "RAID 0");
@@ -951,7 +1136,7 @@ static void print_volume_status(char *file, int fd, int ctlrtype,
 		}
 	}
 	if (failed_drive_count != 0) {
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		printf("    Total of %d failed physical drives "
 			"detected on this logical drive.\n",
 			failed_drive_count);
@@ -970,7 +1155,7 @@ static int lookup_controller(uint32_t board_id)
 	return -1;
 }
 
-static void print_bus_status(char *file, int ctlrtype, int controller_number,
+static void print_bus_status(char *file, int ctlrtype,
 	int bus_number, sense_bus_param *bus_param)
 {
 	int alarms;
@@ -1016,7 +1201,7 @@ static void print_bus_status(char *file, int ctlrtype, int controller_number,
 	alarms = bus_param->alarm_data.alarm_status & bus_param->alarm_data.valid_alarm_bits;
 
 	if (alarms) {
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 
 		status[0] = '\0';
 		if (alarms & 0x1) {
@@ -1153,29 +1338,26 @@ static int msa1000_passthru_ioctl (int fd, int cmd, void *buffer, int size, unsi
 {
 	unsigned char sensebuffer[64];
 	int direction = SG_DXFER_FROM_DEV;
-	unsigned char cdb[16];
+	unsigned char cdb[CISS_MAX_CDB_LEN];
 	int cdblen;
-	unsigned short bufsize;
 
 	memset(cdb, 0, sizeof(cdb));
 	memset(sensebuffer, 0, 64);
 	switch (cmd) {
 	case ID_LOGICAL_DRIVE:
 	case ID_LSTATUS: {
-	        bufsize = htons((unsigned short) size);
-	        cdb[0] = 0x26;
+	        cdb[0] = CISS_READ;
 		cdb[1] = log_unit;
 		cdb[6] = cmd;
-		memcpy(&cdb[7], &bufsize, sizeof(bufsize));
+		set_cdb_buffer_length(cdb, size);
 		direction = SG_DXFER_FROM_DEV;
 		cdblen = 10;
 		break;
 		}
 	case ID_CTLR: {	/* 0x11 */
-	        bufsize = htons((unsigned short) size);
-	        cdb[0] = 0x26;
+	        cdb[0] = CISS_READ;
 		cdb[6] = cmd;
-		memcpy(&cdb[7], &bufsize, sizeof(bufsize));
+		set_cdb_buffer_length(cdb, size);
 		direction = SG_DXFER_FROM_DEV;
 		cdblen = 10;
 		break;
@@ -1185,49 +1367,6 @@ static int msa1000_passthru_ioctl (int fd, int cmd, void *buffer, int size, unsi
 		return -1;
 	}
 	return do_sg_io(fd, cdb, cdblen, buffer, size, direction);
-}
-
-static int inquiry_vendor_model_matches(int fd, char *prod[])
-{
-	int status;
-	char std_inq[256];
-	int i;
-
-	status = do_inquiry(fd, 0, (unsigned char *) std_inq, 255);
-	if (status < 0)
-		return 0;
-	for (i = 0; prod[i] != NULL; i++) {
-		if (strncmp(std_inq+8, prod[i], strlen(prod[i])) == 0)
-			return 1;
-	}
-	return 0;
-}
-
-static char *hpahcisr_prod[] = {
-		"HP      B110i",
-		NULL,
-};
-
-static char *hpsa_prod[] = {
-		"HP      P800",
-		"HP      P400",
-		"HP      P700M",
-		"HP      P212",
-		"HP      P410",
-		"HP      P410i",
-		"HP      P411",
-		"HP      P812",
-		NULL,
-};
-
-static inline int is_hpsa(int fd)
-{
-	return inquiry_vendor_model_matches(fd, hpsa_prod);
-}
-
-static inline int is_hpahcisr(int fd)
-{
-	return inquiry_vendor_model_matches(fd, hpahcisr_prod);
 }
 
 static int is_msa1000(int fd)
@@ -1247,11 +1386,30 @@ static int is_msa1000(int fd)
 	return 0;
 }
 
+static int is_smartarray_driver(int fd)
+{
+	struct _cciss_pci_info_struct pciinfo;
+
+	/* If the CCISS_GETPCIINFO ioctl is known, we can presume
+	 * it's a Smart Array.
+	 *
+	 * This does rely on linux's ioctl numbers being unique
+	 * system wide.  Should be the case on vmware and freebsd too.
+	 *
+	 * I memset the buffer to zero anyway just on the off chance that
+	 * this assumption turns out to be false in order to make the
+	 * program at least behave consistently by not passing
+	 * uninitialized stack data to an unknown ioctl. 
+	 */
+	memset(&pciinfo, 0, sizeof(pciinfo));
+	return (ioctl(fd, CCISS_GETPCIINFO, &pciinfo) == 0);
+}
+
 #define MAX_CACHED_DEVICE_NODES 2048
 static struct serial_number_map {
 	char *device_node;
 	char serial_no[16];
-} serial_no_map[MAX_CACHED_DEVICE_NODES] = { { 0 } };
+} serial_no_map[MAX_CACHED_DEVICE_NODES];
 static int ncached_device_nodes = 0;
 
 static char *lookup_cached_device_node(unsigned char *serial_no)
@@ -1434,7 +1592,8 @@ static void free_device_node_cache()
 
 static int all_same(unsigned char *buf, unsigned int bufsize, unsigned char value)
 {
-	int rc, i;
+	unsigned int i;
+	int rc;
 
 	rc = 0;
 	for (i = 0; i < bufsize; i++) {
@@ -1451,7 +1610,7 @@ static int do_cciss_inquiry(char *file, int fd,
 		unsigned char buf_size)
 {
 	IOCTL_Command_struct cmd;
-	unsigned char cdb[16];
+	unsigned char cdb[CISS_MAX_CDB_LEN];
 	int status;
 
 	memset(&cmd, 0, sizeof(cmd));
@@ -1472,6 +1631,21 @@ static int do_cciss_inquiry(char *file, int fd,
 	status = ioctl(fd, CCISS_PASSTHRU, &cmd);
 	CHECK_IOCTL(file, "INQUIRY", status, &cmd, -1); /* macro which may return... */
 	return 0;
+}
+
+static void append_internal_controller_lunid_to_extended_report_luns(unsigned char *data,
+								int *lun_count)
+{
+	int offset = REPORT_LUNS_HEADER_SIZE +
+			*lun_count * EXTENDED_REPORT_LUNS_ENTRY_SIZE;
+	memset(&data[offset], 0, EXTENDED_REPORT_LUNS_ENTRY_SIZE);
+	data[offset + EXTENDED_REPORT_LUNS_ENTRY_SIZE - 1] = DEVICE_TYPE_RAID;
+	(*lun_count)++;
+}
+
+static unsigned char get_device_type(unsigned char *extended_report_luns_entry)
+{
+	return extended_report_luns_entry[EXTENDED_REPORT_LUNS_ENTRY_SIZE - 1];
 }
 
 /*****************************************************************
@@ -1546,11 +1720,12 @@ static int init_cciss_to_bmic(char *file, int fd)
 #pragma pack(1)
 	struct identify_logical_drive id_logical_drive_data;
 #pragma pack()
-	unsigned long long lunlist[1025];
-	int luncount = 1024;
-	unsigned long long physlunlist[1025];
+	uint64_t lunlist[MAX_LUNS + 1];
+	int lun_count = MAX_LUNS;
+	unsigned char physlunlist[(MAX_LUNS + 1) * EXTENDED_REPORT_LUNS_ENTRY_SIZE +
+						REPORT_LUNS_HEADER_SIZE];
 	unsigned char buf[256];
-	struct bmic_addr_t missed_drive[1025];
+	struct bmic_addr_t missed_drive[MAX_LUNS + 1];
 	int nmissed = 0;
 	int nguessed = 0;
 	int rc;
@@ -1563,22 +1738,23 @@ static int init_cciss_to_bmic(char *file, int fd)
 	memset(missed_drive, 0, sizeof(missed_drive));
 
 	/* Do report LOGICAL LUNs to get a list of all logical drives */
-	rc = do_report_luns(file, fd, &luncount, (unsigned char *) lunlist, 0);
+	rc = do_report_luns(file, fd, &lun_count, (unsigned char *) lunlist, 0, 0);
 	if (rc != 0) {
 		fprintf(stderr, "do_report_luns(logical) failed.\n");
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return -1;
 	}
 
-	cciss_to_bmic.naddrs = luncount;
+	cciss_to_bmic.naddrs = lun_count;
 
 	/* For each logical drive... */
 	for (i = 0; i < cciss_to_bmic.naddrs; i++) {
-		memcpy(cciss_to_bmic.addr[i].logical_lun, &lunlist[i+1], 8);
+		memcpy(cciss_to_bmic.addr[i].logical_lun, &lunlist[i+1],
+				CISS_LUN_ADDR_SIZE);
 		if (debug) {
 			unsigned char *x = (unsigned char *) &lunlist[i+1];
 			fprintf(stderr, "%d: ", i);
-			for (j = 0; j < 8; j++)
+			for (j = 0; j < CISS_LUN_ADDR_SIZE; j++)
 				fprintf(stderr, "%02x", x[j]);
 			fprintf(stderr, "\n");
 		}
@@ -1597,56 +1773,41 @@ static int init_cciss_to_bmic(char *file, int fd)
 	}
 
 	/* Get a list of physical luns... we're looking for RAID controller devices */
-	luncount = 1024;
-	rc = do_report_luns(file, fd, &luncount, (unsigned char *) physlunlist, 1);
+	lun_count = MAX_LUNS;
+	rc = do_report_luns(file, fd, &lun_count, physlunlist, 1,
+				REPORT_LUNS_FLAG_OTHER_PHYS_DEV_INFO);
 	if (rc != 0) {
 		fprintf(stderr, "%s: do_report_physical failed.\n", progname);
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return -1;
 	}
 
 	/* Add the PCI host controller itself to this list... */
-	/* Careful, first 8 bytes of physlunlist are a count, not lun */
-	memcpy(&physlunlist[luncount+1], ZEROLUN, 8);
-	luncount++;
+	append_internal_controller_lunid_to_extended_report_luns(physlunlist, &lun_count);
+
 	memset(controller_lun_list[0], 0, 8);
 	num_controllers = 0;
 
-	for (i = 0;i < luncount;i++) { /* For each physical LUN... */
+	for (i = 0; i < lun_count; i++) { /* For each physical LUN... */
 
 		struct identify_controller id_ctlr_data;
 		int max_possible_drives = 0;
+		int byteoffset = REPORT_LUNS_HEADER_SIZE +
+					i * EXTENDED_REPORT_LUNS_ENTRY_SIZE;
+		unsigned char *this_lun_data = &physlunlist[byteoffset];
 
-		/* Get the standard inquiry page, so we can look at the device type */
-		memset(buf, 0, 100);
-		rc = do_cciss_inquiry(file, fd, (unsigned char *) &physlunlist[i+1], 0, buf, 100);
-		if (rc != 0) {
-			if (debug)
-				fprintf(stderr, "Inquiry to phys device %d failed.\n", i);
-			/* Some devices won't respond well to inquiry, this is expected, if hokey. */
-			continue;
-		}
-
-		/* If it's not a RAID controller, skip it. */
-		if ((buf[0] & 0x0f) != 0x0C) { /* devicetype != RAID_CONTROLLER */
+		/* If the device type is not RAID CONTROLLER, skip this device. */
+		if (get_device_type(this_lun_data) != DEVICE_TYPE_RAID) {
 			if (debug)
 				fprintf(stderr, "Not a RAID controller, skipping.\n");
 			continue;
-		}
-
-		if (debug) {
-			int m;
-			fprintf(stderr, "Querying RAID controller: ");
-			for (m = 16; m < 36; m++)
-				fprintf(stderr, "%c", buf[m]);
-			fprintf(stderr,"\n");
 		}
 
 		/* Issue IDENTIFY_PHYSICAL_CONTROLLER to get number of logical drives */
 		/* possible and present on this particular controller */
 
 		memset(&id_ctlr_data, 0, sizeof(id_ctlr_data));
-		rc = id_ctlr_fd(file, fd, (unsigned char *) &physlunlist[i+1], &id_ctlr_data);
+		rc = id_ctlr_fd(file, fd, this_lun_data, &id_ctlr_data);
 		if (rc != 0) {
 			fprintf(stderr, "%s: do_id_ctlr on lun %d failed.\n", progname, i);
 			continue;
@@ -1666,7 +1827,8 @@ static int init_cciss_to_bmic(char *file, int fd)
 		}
 
 		/* Record this controller for later checking of fan/power/temp status */
-		memcpy(controller_lun_list[num_controllers], (unsigned char *) &physlunlist[i+1], 8);
+		memcpy(controller_lun_list[num_controllers], this_lun_data,
+				CISS_LUN_ADDR_SIZE);
 		busses_on_this_ctlr[num_controllers] = id_ctlr_data.scsi_chip_count;
 
 		/* For SAS controllers, there's a different way to figure "busses"
@@ -1710,12 +1872,11 @@ static int init_cciss_to_bmic(char *file, int fd)
 
 		/* For each possible logical drive on this raid controller... */
 		for (j = 0; j < max_possible_drives; j++) {
-			unsigned char *lundata = (unsigned char *) &physlunlist[i+1];
 
 			/* Issue BMIC IDENTIFY_LOGICAL_DRIVE cmd to get unique identifier */
 			memset(&id_logical_drive_data, 0, sizeof(id_logical_drive_data));
 			rc = do_bmic_id_logical_drive(file, fd,
-				lundata, j, (unsigned char *) &id_logical_drive_data);
+				this_lun_data, j, (unsigned char *) &id_logical_drive_data);
 			if (rc != 0) {
 				fprintf(stderr, "%s: do_bmic_id_logical_drive failed for drive %d\n",
 					progname, j);
@@ -1733,8 +1894,10 @@ static int init_cciss_to_bmic(char *file, int fd)
 
 			if (debug) {
 				fprintf(stderr, "Logical drive 0x%02x%02x%02x%02x%02x%02x%02x%02x:%d has unique id: 0x",
-					lundata[0], lundata[1], lundata[2], lundata[3],
-					lundata[4], lundata[5], lundata[6], lundata[7], j);
+					this_lun_data[0], this_lun_data[1],
+					this_lun_data[2], this_lun_data[3],
+					this_lun_data[4], this_lun_data[5],
+					this_lun_data[6], this_lun_data[7], j);
 				for (m = 0; m < 16; m++)
 					fprintf(stderr, "%02x", id_logical_drive_data.unique_volume_id[m]);
 				fprintf(stderr, "\nSearching....\n");
@@ -1760,7 +1923,8 @@ static int init_cciss_to_bmic(char *file, int fd)
 						if (debug)
 							fprintf(stderr, "Found!, k = %d\n", k);
 						cciss_to_bmic.addr[k].bmic_drive_number = j;
-						memcpy(cciss_to_bmic.addr[k].controller_lun, &physlunlist[i+1], 8);
+						memcpy(cciss_to_bmic.addr[k].controller_lun,
+								this_lun_data, CISS_LUN_ADDR_SIZE);
 						memcpy(cciss_to_bmic.addr[k].bmic_id_ctlr_data,
 							id_logical_drive_data.unique_volume_id, 16);
 						cciss_to_bmic.addr[k].tolerance_type =
@@ -1772,7 +1936,8 @@ static int init_cciss_to_bmic(char *file, int fd)
 			if (k == cciss_to_bmic.naddrs) {
 				if (debug)
 					fprintf(stderr, "Didn't find %d here.  Adding to missed drive list as bmic drive %d\n", i, j);
-				memcpy(missed_drive[nmissed].controller_lun, &physlunlist[i+1], 8);
+				memcpy(missed_drive[nmissed].controller_lun,
+						this_lun_data, CISS_LUN_ADDR_SIZE);
 				missed_drive[nmissed].bmic_drive_number = j;
 				missed_drive[nmissed].tolerance_type = id_logical_drive_data.tolerance_type;
 				nmissed++;
@@ -1849,19 +2014,18 @@ static void setup_sense_bus_params_cmd(IOCTL_Command_struct *c,
 	sense_bus_param *bus_param)
 {
 	memset(c, 0, sizeof(*c));
-	memcpy(&c->LUN_info, lunaddr, 8);
+	memcpy(&c->LUN_info, lunaddr, CISS_LUN_ADDR_SIZE);
 	c->Request.CDBLen = 10;
 	c->Request.Type.Type = TYPE_CMD;
 	c->Request.Type.Attribute = ATTR_SIMPLE;
 	c->Request.Type.Direction = XFER_READ;
 	c->Request.Timeout = 0;
-	c->Request.CDB[0] = 0x26; /* 0x26 means "CCISS READ" */
+	c->Request.CDB[0] = CISS_READ;
 	c->Request.CDB[1] = 0; /* logical drive id? */
 	c->Request.CDB[5] = bus; /* bus id */
 	c->Request.CDB[6] = SENSE_BUS_PARAM;
 	c->buf_size = sizeof(*bus_param);
-	c->Request.CDB[7] = (c->buf_size >> 8) & 0xff;
-	c->Request.CDB[8] = c->buf_size  & 0xff;
+	set_cdb_buffer_length(c->Request.CDB, c->buf_size);
 	c->buf = (unsigned char *) bus_param;
 }
 
@@ -1901,7 +2065,7 @@ int do_sense_bus_parameters(char *file, int fd, unsigned char lunaddr[],
 		fprintf(stderr, "%s: %s: ioctl: controller: %d bus: %d %s\n",
 			progname, file, ctlr, bus, strerror(errno));
 		/* This really should not ever happen. */
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return -1;
 	}
 
@@ -1916,7 +2080,7 @@ int do_sense_bus_parameters(char *file, int fd, unsigned char lunaddr[],
 		fprintf(stderr, "Error getting status for %s "
 			"controller: %d bus: %d: Commandstatus is %d\n",
 			file, ctlr, bus, c.error_info.CommandStatus);
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return -1;
 	}
 	if (debug)
@@ -1937,8 +2101,238 @@ static void check_fan_power_temp(char *file, int ctlrtype, int fd, int num_contr
 			if (do_sense_bus_parameters(file, fd, controller_lun_list[i],
 				i, j, &bus_param) != 0)
 				continue;
-			print_bus_status(file, ctlrtype, i, j, &bus_param);
+			print_bus_status(file, ctlrtype, j, &bus_param);
 		}
+	}
+}
+
+static char *cache_disable_info[] = {
+	/* 0 */
+	"Temporary disable condition. Data was found in posted\n"
+	"write memory, but the configuration signature in the\n"
+	"posted write memory does not match the one stored in\n"
+	"the configuration data stored on the drives.  Therefore\n"
+	"the data cannot be written to the drives.  This disable\n"
+	"condition is also reported if the controller firmware is\n"
+	"replaced with one that is incompatible with the format of\n"
+	"data found in the posted write memory.\n\n",
+
+	/* 1 */
+	"Temporary disable condition. Posted write operations have\n"
+	"been disabled due to the fact that less than 75% of the\n"
+	"battery packs are at the sufficient voltage level.\n",
+
+	/* 2 */
+	"Temporary disable condition. Posted write operations were\n"
+	"disabled by the user.\n",
+
+	/* 3 */
+	"Temporary disable condition. The adapter does not currently\n"
+	"have sufficient resources to perform posted write operations.\n"
+	"(e.g. drive rebuild operations are occurring, etc.)\n",
+
+	/* 4 */
+	"Temporary disable condition:  The array accelerator board is\n"
+	"not attached.\n",
+
+	/* 5 */
+	"Temporary disable condition:  The array accelerator memory is\n"
+	"in use by an Expand operation that is queued up or in progress.\n",
+
+	/* 6 */
+	"Temporary disable condition:  The array accelerator memory is\n"
+	"in use by a Snapshot operation that is queued up or in progress.\n",
+	/* 7 */
+	"Temporary disable condition: The batteries on the redundant\n"
+	"controller are not at a sufficient charge level to support\n"
+	"reliable posting of write data.\n",
+	/* 8 */
+	"Temporary disable condition:  A cache size mismatch exists\n"
+	"between the two controllers in a redundant environment.\n",
+	/* 9 */
+	"Temporary disable condition:  A cache failure has been detected\n"
+	"by the other controller in a redundant environment.\n",
+	/* 10 */
+	"Temporary disable condition:  The cache has been disabled to\n"
+	"penalize the user who has an RAID ADG volume configured but the\n"
+	"ADG Enabler Dongle is broken or missing.\n",
+	/* 11 */
+	"Temporary disable condition: The cache has been disabled because\n"
+	"SA 6400 EM Controller is configured as boot controller. This is\n"
+	"not a recommended configuration.  User is advised to migrate the\n"
+	"boot volume to SA 6400 Controller and configure it as boot\n"
+	"controller.\n",
+	/* 12 */
+	"Temporary disable condition: The posted write cache has been\n"
+	"disabled in a flash-backed write cache module because the\n"
+	"capacitor charge is low.\n",
+	/* 13 */
+	"Temporary disable condition: The posted write cache has been\n"
+	"disabled in a flash-backed write cache module because its\n"
+	"flash memory is being erased.\n",
+	/* 14 */
+	"", /* unused code */
+	/* 15 */
+	"", /* unused code */
+	/* 16 */
+	"Permanent disable condition. Data was found at reset\n"
+	"initialization in the posted write memory, however, the\n"
+	"mirror data compare test failed resulting in that data being\n"
+	"marked as invalid. This is a possible data loss circumstance.\n"
+	"This disable condition only occurs on controllers with\n"
+	"mirrored cache RAM (very very old controllers).  You won’t see\n"
+	"this with any remotely recent controller.\n",
+	/* 17 */
+	"Permanent disable condition.  Unrecoverable error reading data\n"
+	"from the cache.  For mirrored caches, (very very old controllers)\n"
+	"this means that read parity errors were detected on both sides\n"
+	"of the mirror.  For ECC protected caches, (non-ancient hardware)\n"
+	"this means an unrecoverable ECC read error occurred.  This is a\n"
+	"definite data loss circumstance.\n",
+	/* 18 */
+	"Permanent disable condition. Data could not be written to the\n"
+	"cache memory.  This typically means that a parity error was\n"
+	"detected while writing data to the cache.  This could be caused\n"
+	"by such things as an incomplete connection between the cache card\n"
+	"and the controller.  This is not a data loss circumstance.\n",
+	/* 19 */
+	"Permanent disable condition:  Configuration changes were made but\n"
+	"cache configuration was not updated. (Note: This condition will\n"
+	"not occur except on very very old controllers.)\n",
+};
+
+static void decode_cache_disable_code(unsigned short disable_code)
+{
+
+#define CACHE_DECODE_INDENT "           "
+
+	if (disable_code >= ARRAYSIZE(cache_disable_info)) {
+		printf(CACHE_DECODE_INDENT
+			"Unknown cache disable code: %d\n", disable_code);
+		return;
+	}
+
+	if (strcmp(cache_disable_info[disable_code], "") == 0) { /* unused code */
+		printf(CACHE_DECODE_INDENT
+			"Unknown cache disable code: %d\n", disable_code);
+		return;
+	}
+
+	printf(CACHE_DECODE_INDENT "%s", cache_disable_info[disable_code]);
+}
+
+static void print_cache_config_status(struct bmic_cache_configuration *cache_config,
+			uint32_t cache_config_status_bit,
+			char *message)
+{
+	if (!(cache_config->status & cache_config_status_bit))
+		return;
+	printf("   %s\n", message);
+
+	/* special case for write cache disabled, have to decode why */
+	if (cache_config_status_bit & (BMIC_POSTED_WRITE_TEMP_DISABLED |
+					BMIC_POSTED_WRITE_PERM_DISABLED))
+		decode_cache_disable_code(cache_config->disable_code);
+}
+
+static void check_one_nonvolatile_cache_status(char *file, int ctlrtype,
+			int instance, struct bmic_cache_configuration *cache_config)
+{
+	uint32_t trouble =
+		BMIC_POSTED_WRITE_TEMP_DISABLED |
+		BMIC_POSTED_WRITE_PERM_DISABLED |
+		BMIC_POSTED_WRITE_POSSIBLE_DATA_LOSS_ON_RESET |
+		BMIC_POSTED_WRITE_UNFLUSHED_DIRTY_DATA |
+		BMIC_POSTED_WRITE_DIRTY_DATA_LIMIT_REACHED |
+		BMIC_POSTED_WRITE_ECC_ERRORS_DETECTED |
+		BMIC_POSTED_WRITE_DATA_LOSS_OTHER |
+		BMIC_POSTED_WRITE_BATTERY_ENABLE_HW_PROBLEM |
+		BMIC_POSTED_WRITE_CPLD_BBWC_INCOMPATIBILITY;
+				
+	/* I'm not going to worry about trying to report
+	 * whether cache is enabled or disabled for individual logical
+	 * drives, instead will concentrate on the health of the cache
+	 * module
+	 */
+
+	if (!(trouble & cache_config->status)) {
+		if (!verbose)
+			return; /* Cache is ok. */
+	} else {
+		everything_hunky_dory = false;
+	}
+
+	printf("%s(%s:%d): Non-Volatile Cache status:\n",
+			file, smartarray_id[ctlrtype].board_name, instance);
+
+	/* For *very* old controllers, these values are KiB, not MiB. */
+	printf("%35s: %s\n", "Cache configured",
+			cache_config->disable_flag == 0 ? "Yes" : "No");
+	if (cache_config->disable_flag)
+		return;
+
+	printf("%35s: %hu MiB\n", "Read cache memory", cache_config->mem_for_read_cache);
+	printf("%35s: %hu MiB\n", "Write cache memory", cache_config->mem_for_write_cache);
+	printf("%35s: %s\n", "Write cache enabled",
+			(cache_config->status & BMIC_POSTED_WRITE_STATUS_ENABLED) ? "Yes" : "No");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_TEMP_DISABLED,
+		"Write cache temporarily disabled");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_PERM_DISABLED,
+		"Write Cache permanently disabled"); 
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_POSSIBLE_DATA_LOSS_ON_RESET,
+		"Possible data loss on last reset");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_UNFLUSHED_DIRTY_DATA,
+		"Cache contains unflushed data:");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_DIRTY_DATA_LIMIT_REACHED,
+		"Cache dirty limit reached");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_ECC_ERRORS_DETECTED,
+		"Excessive ECC errors detected:");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_DATA_LOSS_OTHER,
+		"Non power related data loss");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_AUTO_RECONFIG,
+		"Auto-reconfigured on last reset");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_REDUNDCTLR_VALID_DATA_FOUND,
+		"Redundant controller data flushed on reset");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_BATTERY_ENABLE_HW_PROBLEM,
+		"HW problem with battery enable");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_CPLD_BBWC_INCOMPATIBILITY,
+		"CPLD battery backed write cache incompatibility");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_CAPACITOR_ATTACHED,
+		"Flash backed cache present");
+	print_cache_config_status(cache_config,
+		BMIC_POSTED_WRITE_161718_CACHE_DISABLED,
+		"Permanent disable condition detected");
+}
+
+static void check_nonvolatile_cache_status(char *file, int ctlrtype,
+						int fd, int num_controllers)
+{
+	int i;
+
+	for (i = 0; i < num_controllers; i++) {
+		struct bmic_cache_configuration cache_config;
+		
+		memset(&cache_config, 0, sizeof(cache_config));
+		if (do_sense_cache_configuration(file, fd, controller_lun_list[i],
+				&cache_config) != 0) {
+			everything_hunky_dory = false;
+			fprintf(stderr, "%s:%s(%d): cannot get non-volatile "
+				"cache configuration\n", progname, file, i);
+			continue;
+		}
+		check_one_nonvolatile_cache_status(file, ctlrtype, i, &cache_config);
 	}
 }
 
@@ -1952,7 +2346,7 @@ static int msa1000_status(char *file, int fd)
 		fprintf(stderr, "%s: %s: Can't identify controller, id = 0x%08x.\n",
 			progname, file, id.board_id);
 		if (persnickety)
-			everything_hunky_dory = 0;
+			everything_hunky_dory = false;
 		return -1;
 	}
 	numluns = id.num_logical_drives;
@@ -1975,7 +2369,7 @@ static int cciss_device_type_is_correct(char *file, int fd)
 		fprintf(stderr, "%s: cannot stat %s: %s\n",
 			progname, file, strerror(errno));
 		if (persnickety)
-			everything_hunky_dory = 0;
+			everything_hunky_dory = false;
 		return -1;
 	}
 
@@ -1991,7 +2385,7 @@ static int cciss_device_type_is_correct(char *file, int fd)
 		fprintf(stderr, "%s: %s is not a %s device.\n",
 			progname, file, WANTED_DEVICE_TYPE_STRING);
 		if (persnickety)
-			everything_hunky_dory = 0;
+			everything_hunky_dory = false;
 		return -1;
 	}
 	return 0;
@@ -2008,18 +2402,18 @@ static void cciss_logical_drive_status(char *file, int fd,
 	/* Construct command to get logical drive status */
 	memset(&c, 0, sizeof(c));
 	memset(&ldstatus, 0, sizeof(ldstatus));
-	memcpy(&c.LUN_info, cciss_to_bmic.addr[volume_number].controller_lun, 8);
+	memcpy(&c.LUN_info, cciss_to_bmic.addr[volume_number].controller_lun,
+			CISS_LUN_ADDR_SIZE);
 	c.Request.CDBLen = 10;
 	c.Request.Type.Type = TYPE_CMD;
 	c.Request.Type.Attribute = ATTR_SIMPLE;
 	c.Request.Type.Direction = XFER_READ;
 	c.Request.Timeout = 0;
-	c.Request.CDB[0] = 0x26; /* 0x26 means "CCISS READ" */
+	c.Request.CDB[0] = CISS_READ;
 	c.Request.CDB[1] = cciss_to_bmic.addr[volume_number].bmic_drive_number & 0xff;
 	c.Request.CDB[6] = ID_LSTATUS;
 	c.buf_size = sizeof(ldstatus);
-	c.Request.CDB[7] = (c.buf_size >> 8) & 0xff;
-	c.Request.CDB[8] = c.buf_size  & 0xff;
+	set_cdb_buffer_length(c.Request.CDB, c.buf_size);
 	c.Request.CDB[9] = (cciss_to_bmic.addr[volume_number].bmic_drive_number >> 8) & 0x0ff;
 	c.buf = (unsigned char *) &ldstatus;
 
@@ -2031,14 +2425,14 @@ static void cciss_logical_drive_status(char *file, int fd,
 		fprintf(stderr, "%s: %s: ioctl: logical drive: %d %s\n",
 			progname, file, volume_number, strerror(errno));
 		/* This really should not ever happen. */
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return;
 	}
 	if (c.error_info.CommandStatus != 0) {
 		fprintf(stderr, "Error getting status for %s "
 			"volume %d: Commandstatus is %d\n",
 			file, volume_number, c.error_info.CommandStatus);
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return;
 	} else {
 		if (debug)
@@ -2104,6 +2498,7 @@ static void check_physical_drive(char *file, int fd,
 	struct identify_physical_device device_data;
 	char location[1000];
 	int ctlrtype;
+	char status[100];
 
 	ctlrtype = lookup_controller(id->board_id);
 
@@ -2126,22 +2521,28 @@ static void check_physical_drive(char *file, int fd,
 			controller_lun[0], controller_lun[1], controller_lun[2], controller_lun[3],
 			controller_lun[4], controller_lun[5], controller_lun[6], controller_lun[7],
 			bmic_drive_number);
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return;
 	}
 
+	find_bus_target(id, bmic_drive_number, &bus, &target);
+	format_phys_drive_location(location, bus, target, ctlrtype,
+		controller_lun, rc ? NULL : &device_data);
+	sprintf(status, "OK");
 	/* Check S.M.A.R.T data */
+	
 	if (!(device_data.more_physical_drive_flags & 0x01)) /* supports S.M.A.R.T.? */
-		return;
+		goto print_data;
 	if (!(device_data.more_physical_drive_flags & 0x04)) /* S.M.A.R.T enabled? */
-		return;
+		goto print_data;
 	if (device_data.more_physical_drive_flags & 0x02) { /* S.M.A.R.T. predictive failure bit set? */
-		everything_hunky_dory = 0;
-		find_bus_target(id, bmic_drive_number, &bus, &target);
-		format_phys_drive_location(location, bus, target, ctlrtype,
-			controller_lun, rc ? NULL : &device_data);
-		printf("%s S.M.A.R.T. predictive failure.\n", location);
+		everything_hunky_dory = false;
+		sprintf(status, "S.M.A.R.T. predictive failure.");
 	}
+print_data:
+	if (strcmp(status, "OK") == 0 && !verbose)
+		return;
+	printf("%s %s\n", location, status);
 }
 
 static void check_ctlr_physical_drives(char *file, int fd,
@@ -2149,6 +2550,7 @@ static void check_ctlr_physical_drives(char *file, int fd,
 {
 	int i, rc;
 	struct identify_controller id;
+	int physical_drive_count = 0;
 
 	rc = id_ctlr_fd(file, fd, controller_lun, &id);
 	if (rc != 0) {
@@ -2156,9 +2558,16 @@ static void check_ctlr_physical_drives(char *file, int fd,
 			file,
 			controller_lun[0], controller_lun[1], controller_lun[2], controller_lun[3],
 			controller_lun[4], controller_lun[5], controller_lun[6], controller_lun[7]);
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return;
 	}
+
+	for (i = bmic_next_phy_disk(&id, -1); i != -1; i = bmic_next_phy_disk(&id, i))
+		physical_drive_count++;
+
+	if (verbose)
+		printf("  Physical drives: %d\n", physical_drive_count);
+
 	/* For each physical disk i... */
 	for (i = bmic_next_phy_disk(&id, -1); i != -1; i = bmic_next_phy_disk(&id, i))
 		check_physical_drive(file, fd, controller_lun, &id, i);
@@ -2168,11 +2577,27 @@ static void check_physical_drives(char *file, int fd)
 {
 	int i;
 
-	if (!check_smart_data)
+	if (!check_smart_data && !verbose)
 		return;
 
 	for (i = 0; i < num_controllers; i++)
 		check_ctlr_physical_drives(file, fd, controller_lun_list[i]);
+}
+
+static void print_controller_info(struct identify_controller *id, int ctlrtype)
+{
+	if (!verbose)
+		return;
+
+	printf("Controller: %s\n", smartarray_id[ctlrtype].board_name);
+	printf("  Board ID: 0x%08x\n", id->board_id);
+	printf("  Logical drives: %hu\n", id->usExtLogicalUnitCount);
+	printf("  Running firmware: %c%c%c%c\n",
+		id->running_firm_rev[0], id->running_firm_rev[1],
+		id->running_firm_rev[2], id->running_firm_rev[3]);
+	printf("  ROM firmware: %c%c%c%c\n",
+		id->rom_firm_rev[0], id->rom_firm_rev[1],
+		id->rom_firm_rev[2], id->rom_firm_rev[3]);
 }
 
 static int cciss_status(char *file)
@@ -2190,7 +2615,7 @@ static int cciss_status(char *file)
 			fprintf(stderr, "%s: open %s: %s\n",
 				progname, file, strerror(errno));
 		if (persnickety)
-			everything_hunky_dory = 0;
+			everything_hunky_dory = false;
 		return -1;
 	}
 
@@ -2203,10 +2628,10 @@ static int cciss_status(char *file)
 		if (is_msa1000(fd))
 			return msa1000_status(file, fd);
 
-		if (!is_hpsa(fd) && !is_hpahcisr(fd)) {
+		if (!is_smartarray_driver(fd)) {
 			fprintf(stderr, "%s: %s: Unknown SCSI device.\n", progname, file);
 			if (persnickety)
-				everything_hunky_dory = 0;
+				everything_hunky_dory = false;
 			close(fd);
 			return -1;
 		}
@@ -2216,10 +2641,10 @@ static int cciss_status(char *file)
 			return -1;
 
 	/* See if it's a smartarray of some kind... */
-	rc = id_ctlr_fd(file, fd, ZEROLUN, &id);
+	rc = id_ctlr_fd(file, fd, zero_lun, &id);
 	if (rc < 0) {
 		if (persnickety)
-			everything_hunky_dory = 0;
+			everything_hunky_dory = false;
 		return -1;
 	}
 
@@ -2229,16 +2654,18 @@ static int cciss_status(char *file)
 		fprintf(stderr, "%s: %s: Unknown controller, board_id = 0x%08x\n",
 			progname, file, id.board_id);
 		if (persnickety)
-			everything_hunky_dory = 0;
+			everything_hunky_dory = false;
 		return -1;
 	}
+
+	print_controller_info(&id, ctlrtype);
 
 	/* Construct mapping of CISS LUN addresses to "the BMIC way" */
 	rc = init_cciss_to_bmic(file, fd);
 	if (rc != 0) {
 		fprintf(stderr, "%s: Internal error, could not construct CISS to BMIC mapping.\n",
 				progname);
-		everything_hunky_dory = 0;
+		everything_hunky_dory = false;
 		return -1;
 	}
 
@@ -2249,6 +2676,7 @@ static int cciss_status(char *file)
 
 	/* Check the fan/power/temp status of each controller */
 	check_fan_power_temp(file, ctlrtype, fd, num_controllers);
+	check_nonvolatile_cache_status(file, ctlrtype, fd, num_controllers);
 	close(fd);
 	return 0;
 }
@@ -2277,6 +2705,7 @@ static struct option longopts[] = {
 	{ "exhaustive", 0, NULL, 'x'},
 	{ "smart", 0, NULL, 's'},
 	{ "copyright", 0, NULL, 'C'}, /* opposite of -q */
+	{ "verbose", 0, NULL, 'V'},
 	{ NULL, 0, NULL, 0},
 };
 
@@ -2286,7 +2715,7 @@ int main(int argc, char *argv[])
 
 	do {
 
-		opt = getopt_long(argc, argv, "dqusvxC", longopts, NULL );
+		opt = getopt_long(argc, argv, "dpqusvVxC", longopts, NULL );
 		switch (opt) {
 			case 'd': debug = 1;
 				continue;
@@ -2313,6 +2742,8 @@ int main(int argc, char *argv[])
 			case 'x' : exhaustive_search = 1;
 					/* exhaustive search doesn't really do anything anymore. */
 				continue;
+			case 'V' : verbose = 1;
+				continue;
 			case '?' :
 			case ':' :
 				usage(); /* usage calls exit(), so no fall thru */
@@ -2329,6 +2760,6 @@ int main(int argc, char *argv[])
 	for (i = optind; i < argc; i++)
 		cciss_status(argv[i]);
 	free_device_node_cache();
-	exit((everything_hunky_dory != 1));
+	exit(!everything_hunky_dory);
 }
 

@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(cciss_vol_status, 1.09, smcameron@users.sourceforge.net)
+AC_INIT(cciss_vol_status, 1.11, smcameron@users.sourceforge.net)
 AC_CONFIG_SRCDIR([cciss_vol_status.c])
 AC_CONFIG_HEADER([config.h])
 
@@ -14,6 +14,7 @@ AC_PROG_CC
 
 # Checks for header files.
 AC_HEADER_STDC
+AC_HEADER_STDBOOL
 AC_CHECK_HEADERS([errno.h fcntl.h inttypes.h netinet/in.h stdlib.h string.h sys/ioctl.h unistd.h])
 AC_CHECK_HEADER(scsi/sg.h, AC_DEFINE([HAVE_SCSI_SG_H], 1, [1 if Linux SCSI Generic header file present]), AC_MSG_WARN([scsi/sg.h not found so MSA1000 support will not be compiled.]))
 AC_CHECK_HEADER(scsi/scsi.h, AC_DEFINE([HAVE_SCSI_SCSI_H], 1, [1 if Linux SCSI header file present]))

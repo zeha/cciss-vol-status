@@ -96,3 +96,47 @@ Changes since 1.07:
 	* make it compile on freebsd
 	* Fix a file descriptor leak
 
+Changes since 1.08:
+
+2010/12/03 08:23:26
+	* Remove unused bogus variable declarations at the end of a function
+	  that didn't compile on older gcc versions. (Thanks to Simon Matter)
+	* Print error information if sense bus parameters encounters a target
+	  status.
+	* Remove bogus incorrect initialization of controller_lun_list (it's
+	  done later down in the code correctly.)
+	* Make it compile with no warnings after "configure CFLAGS=-Wall"
+
+Changes since 1.09:
+	* Clean up uninitialized variables detected by valgrind.
+	* Added some new smart array controllers to the list of known
+	  controllers
+	* Replace the too specific is_hpsa() and is_hpahcisr() functions with
+	  a more generic is_smart_array().  This was preventing -u option from
+	  working with the hpsa driver.
+	* Remove inquiry_vendor_model_matches() function which is now no
+	  longer used.
+	* Added -W and -Wall flags to gcc in linux_alternate_makefile.mk
+	  and fixed up all the warnings that those found.
+	* Add -V (verbose) option which prints out extra information
+	  about the controller (board ID, running firmware revision,
+	  ROM firmware revision,  and number of logical drives).
+	* Make the --verbose option print out more information about the
+	  controllers and physical drives.  For each controller, the board ID,
+	  number of logical drives, currently running firmware revision and ROM
+	  firmware revision are printed.  For each physical drive, the location,
+	  vendor, model, serial number, and firmware revision are printed.
+	* Added .gitignore and cvsignore files
+	* regenerated configure, aclocal.m4, and Makefile.in on RHEL6u2.
+	* Made -p shortcut for --persnickety actualy work.
+
+Changes since 1.10
+
+	* Added support for new controllers
+	* Now can report status of nonvolatile cache
+	* Misc. code cleanup and refactoring
+	* Do not spin up sleeping spare drives.  This is done by using
+	  "extended" CISS_REPORT_LUNS to obtain the device type instead of
+	  sending inquiries to every device returned by standard
+	  CISS_REPORT_LUNS to get the device type.
+
