@@ -1,3 +1,11 @@
+cciss-vol-status (1.11-1) unstable; urgency=low
+
+  * New Upstream version 1.11
+  * Replace 'automake1.11' with 'automake'
+  * Bump Standards-Version to 3.9.4
+
+ -- Christian Hofstaedtler <christian@hofstaedtler.name>  Mon, 10 Jun 2013 10:39:58 +0200
+
 cciss-vol-status (1.10-1) unstable; urgency=low
 
   * Imported Upstream version 1.10
