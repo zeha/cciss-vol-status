@@ -1,7 +1,7 @@
-.\" Copyright (C) 2006,2007,2012 Hewlett-Packard Development Company, L.P.
+.\" Copyright (C) 2006,2007,2012,2013 Hewlett-Packard Development Company, L.P.
 .\"
 .\"
-.\"	Copyright 2006,2007,2012 Hewlett-Packard Development Company, L.P.
+.\"	Copyright 2006,2007,2012,2013 Hewlett-Packard Development Company, L.P.
 .\"
 .\"	Author: Stephen M. Cameron
 .\"
@@ -21,7 +21,7 @@
 .\"	along with cciss_vol_status; if not, write to the Free Software
 .\"	Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 .\"	
-.TH CCISS_VOL_STATUS "8" "Aug 2012" "cciss_vol_status (ccissutils) " ""
+.TH CCISS_VOL_STATUS "8" "May 2013" "cciss_vol_status (ccissutils) " ""
 .SH NAME
 cciss_vol_status \- show status of logical drives attached to HP Smartarray controllers
 .SH SYNOPSIS
@@ -173,16 +173,23 @@ which corresponds to the HP P800 RAID controller listed in /proc/scsi/scsi.
 	/dev/cciss/c0d0: (Smart Array P800) Enclosure MSA60 (S/N: USP6340B3F) on Bus 2, Physical Port 2E status: OK.
 
 
-
-	[root@localhost]# ./cciss_vol_status --verbose /dev/sg0
-	Controller: Smart Array P410
-	  Board ID: 0x3243103c
+	[root@localhost cciss_vol_status]# ./cciss_vol_status --verbose /dev/sg0
+	Controller: Smart Array P420i
+	  Board ID: 0x3354103c
 	  Logical drives: 1
-	  Running firmware: 5.70
-	  ROM firmware: 5.70
-	/dev/sda: (Smart Array P410) RAID 0 Volume 0 status: OK. 
-	  Physical drives: 1
-		 connector 2I box 1 bay 1                 HP      EG0146FAWHU                          6SD1QH2X0000B117LGHR     HPDE OK
+	  Running firmware: 3.42
+	  ROM firmware: 3.42
+	/dev/sda: (Smart Array P420i) RAID 1 Volume 0 status: OK. 
+	  Physical drives: 2
+		 connector 1I box 2 bay 1                 HP      EG1200FCVBQ                                      KZG21NVD     HPD1 OK
+		 connector 2I box 2 bay 5                 HP      EG1200FCVBQ                                      KZG20X7D     HPD1 OK
+	/dev/sg0(Smart Array P420i:0): Non-Volatile Cache status:
+			   Cache configured: Yes
+			  Read cache memory: 81 MiB
+			 Write cache memory: 735 MiB
+			Write cache enabled: Yes
+	   Flash backed cache present
+
 
 .DE
 .fi

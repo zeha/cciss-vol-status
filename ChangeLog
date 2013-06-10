@@ -129,3 +129,14 @@ Changes since 1.09:
 	* Added .gitignore and cvsignore files
 	* regenerated configure, aclocal.m4, and Makefile.in on RHEL6u2.
 	* Made -p shortcut for --persnickety actualy work.
+
+Changes since 1.10
+
+	* Added support for new controllers
+	* Now can report status of nonvolatile cache
+	* Misc. code cleanup and refactoring
+	* Do not spin up sleeping spare drives.  This is done by using
+	  "extended" CISS_REPORT_LUNS to obtain the device type instead of
+	  sending inquiries to every device returned by standard
+	  CISS_REPORT_LUNS to get the device type.
+
