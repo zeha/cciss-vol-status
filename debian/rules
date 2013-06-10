@@ -5,7 +5,7 @@
 	dh $@ --with autotools_dev
 
 override_dh_auto_configure:
-	AUTOMAKE=automake-1.11 autoreconf -i
+	autoreconf -i
 	dh_auto_configure
 
 override_dh_installdocs:
