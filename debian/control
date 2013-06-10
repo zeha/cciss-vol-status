@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: Christian Hofstaedtler <christian@hofstaedtler.name>
 Build-Depends: debhelper (>= 9), autotools-dev, autoconf, automake1.11
 Build-Conflicts: autoconf2.13, automake1.4
-Standards-Version: 3.9.3
+Standards-Version: 3.9.4
 Homepage: http://cciss.sourceforge.net/
 Vcs-Browser: http://github.com/zeha/cciss-vol-status/
 Vcs-Git: git://github.com/zeha/cciss-vol-status.git
