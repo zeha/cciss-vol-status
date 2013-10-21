@@ -1,7 +1,7 @@
 Source: cciss-vol-status
 Section: admin
 Priority: extra
-Maintainer: Christian Hofstaedtler <christian@hofstaedtler.name>
+Maintainer: Christian Hofstaedtler <zeha@debian.org>
 Build-Depends: debhelper (>= 9), autoconf, automake, dh-autoreconf
 Build-Conflicts: autoconf2.13, automake1.4
 Standards-Version: 3.9.4
