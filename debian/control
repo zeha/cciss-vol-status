@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: Christian Hofstaedtler <zeha@debian.org>
 Build-Depends: debhelper (>= 9), autoconf, automake, dh-autoreconf
 Build-Conflicts: autoconf2.13, automake1.4
-Standards-Version: 3.9.4
+Standards-Version: 3.9.5
 Homepage: http://cciss.sourceforge.net/
 Vcs-Browser: http://github.com/zeha/cciss-vol-status/
 Vcs-Git: git://github.com/zeha/cciss-vol-status.git
