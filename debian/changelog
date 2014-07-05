@@ -1,3 +1,13 @@
+cciss-vol-status (1.11-2) unstable; urgency=medium
+
+  * Use dh-autoreconf instead of manually running autoreconf
+  * Update my E-Mail Address
+  * Refresh patch: fix-manpage
+  * Add patch: add new PCI IDs
+  * Bump Standards-Version to 3.9.5 (no further changes)
+
+ -- Christian Hofstaedtler <zeha@debian.org>  Sat, 05 Jul 2014 21:53:52 +0200
+
 cciss-vol-status (1.11-1) unstable; urgency=low
 
   * New Upstream version 1.11
